@@ -1,6 +1,9 @@
 import { sql } from '@vercel/postgres';
 import Link from 'next/link';
 
+// Forces Vercel to refresh data for your Uptime bot
+export const dynamic = 'force-dynamic';
+
 // --- HELPERS ---
 function parseCloud(text: string) {
   const matches = text.match(/(FEW|SCT|BKN|OVC)(\d{3})/g);
@@ -25,7 +28,22 @@ function parseMetar(metar: string) {
   };
 }
 
-// --- DATA FETCHING (The Missing Function) ---
+// NEW HELPER: Strictly extract runways only from the first sentence
+function getActiveRunways(atis: string, type: 'ARRIVALS' | 'DEPARTURES'): string[] {
+  // Look for "ARRIVALS, RWY..." or "DEPARTURES, RWY..." and stop at the first period
+  const regex = new RegExp(`${type},\\s*RWY\\s*([^.]+)`, 'i');
+  const match = atis.match(regex);
+  if (!match) return [];
+  
+  // Find all runway codes (e.g., 07L, 25R) within that specific sentence
+  const rwyMatch = match[1].match(/\b(07|25)[LRC]?\b/gi);
+  if (!rwyMatch) return [];
+  
+  // Remove duplicates
+  return [...new Set(rwyMatch.map(r => r.toUpperCase()))];
+}
+
+// --- DATA FETCHING ---
 async function fetchAeroData() {
   try {
     const [atisRes, metarRes, tafRes] = await Promise.all([
@@ -70,7 +88,16 @@ export default async function Page() {
   if (!data) return <div style={{color: 'white', padding: '20px'}}>SYNCING WITH HKCAD...</div>;
 
   const wx = parseMetar(data.metar);
-  const isOps07 = data.atisArr.includes("07") || data.atisDep.includes("07");
+  
+  // Extract specific runways to prevent false positives (like "EXP RWY 07C")
+  const arrRunways = getActiveRunways(data.atisArr, 'ARRIVALS');
+  const depRunways = getActiveRunways(data.atisDep, 'DEPARTURES');
+  
+  // Fallback to check general direction if the strict parser missed it
+  const isOps07 = arrRunways.some(r => r.includes("07")) || 
+                  depRunways.some(r => r.includes("07")) || 
+                  data.atisArr.includes("07");
+
   const runwayConfig = [{ id: "N", l: "07L", r: "25R" }, { id: "C", l: "07C", r: "25C" }, { id: "S", l: "07R", r: "25L" }];
 
   return (
@@ -107,8 +134,10 @@ export default async function Page() {
         {/* RUNWAYS */}
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '8px', width: '160px' }}>
           {runwayConfig.map((rwy) => {
-            const activeArr = data.atisArr.includes(rwy.l) || data.atisArr.includes(rwy.r);
-            const activeDep = data.atisDep.includes(rwy.l) || data.atisDep.includes(rwy.r);
+            // STRICT CHECK: Only mark active if found in the isolated sentence
+            const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
+            const activeDep = depRunways.includes(rwy.l) || depRunways.includes(rwy.r);
+            
             return (
               <div key={rwy.id} style={{ position: 'relative', height: '12px', background: '#000', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontSize: '9px' }}>
                 <span style={{color: '#666'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '1px dashed #444', margin: '0 5px' }} /><span style={{color: '#666'}}>{rwy.r}</span>
