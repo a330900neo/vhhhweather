@@ -16,7 +16,7 @@ async function fetchAviationWeather(type: 'metar' | 'taf') {
 async function fetchATIS() {
   const res = await fetch('https://atis.cad.gov.hk/ATIS/ATISweb/atis.php', { cache: 'no-store' });
   const html = await res.text();
-  const match = html.replace(/<[^>]*>?/gm, '').match(/(VHHH ARR ATIS.*)Remarks/s);
+  const match = html.replace(/<[^>]*>?/gm, '').match(/(VHHH ARR ATIS[\s\S]*)Remarks/);
   return match ? match[1].trim() : "";
 }
 
