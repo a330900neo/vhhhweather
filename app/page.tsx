@@ -3,7 +3,6 @@ import Link from 'next/link';
 
 // --- HELPERS ---
 function parseCloud(text: string) {
-  // Matches patterns like FEW025, SCT030, BKN100
   const matches = text.match(/(FEW|SCT|BKN|OVC)(\d{3})/g);
   if (!matches) return "SKC";
   return matches.map(m => {
@@ -26,22 +25,7 @@ function parseMetar(metar: string) {
   };
 }
 
-function decodeTAF(taf: string) {
-  const periods = taf.split(/(?=BECMG|TEMPO|FM)/);
-  return periods.map(p => {
-    // Extracts Date (DD) and Time (HH) from 2509/2511 style
-    const timeMatch = p.match(/(\d{2})(\d{2})\/(\d{2})(\d{2})/);
-    const date = timeMatch ? timeMatch[1] : "--";
-    const time = timeMatch ? `${timeMatch[2]}-${timeMatch[4]}Z` : "BASE";
-    
-    const wind = p.match(/(\d{3})(\d{2})KT/);
-    const clouds = parseCloud(p);
-    const type = p.startsWith("BECMG") ? "BCMG" : p.startsWith("TEMPO") ? "TMPO" : "BASE";
-    
-    return { date, time, dir: wind?.[1] || "---", spd: wind?.[2] || "--", clouds, type };
-  });
-}
-
+// --- DATA FETCHING (The Missing Function) ---
 async function fetchAeroData() {
   try {
     const [atisRes, metarRes, tafRes] = await Promise.all([
@@ -49,34 +33,54 @@ async function fetchAeroData() {
       fetch('https://aviationweather.gov/api/data/metar?ids=VHHH&format=json', { cache: 'no-store' }),
       fetch('https://aviationweather.gov/api/data/taf?ids=VHHH&format=json', { cache: 'no-store' })
     ]);
+    
     const html = await atisRes.text();
     const clean = html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ');
+    
+    // Precise ATIS Splitting
+    const arrPart = clean.match(/VHHH ARR ATIS.*?(?=VHHH DEP ATIS|FIRST CTC WITH APP)/i)?.[0] || "";
+    const arrAtis = arrPart + " FIRST CTC WITH APP";
+    
+    const depPart = clean.split(/VHHH DEP ATIS/i)[1]?.split("FIRST CTC WITH DELIVERY")[0] || "";
+    const depAtis = "VHHH DEP ATIS " + depPart.trim() + " FIRST CTC WITH DELIVERY";
+
     const metarJson = await metarRes.json();
     const tafJson = await tafRes.json();
-    return {
-      atisArr: clean.match(/(VHHH ARR ATIS.*?FIRST CTC WITH APP)/i)?.[1] || "",
-      atisDep: clean.match(/(VHHH DEP ATIS.*?FIRST CTC WITH DELIVERY)/i)?.[1] || "",
-      metar: metarJson[0]?.rawOb || "",
-      taf: tafJson[0]?.rawTAF || ""
-    };
-  } catch (e) { return null; }
+
+    // Save to Database for the History Chart
+    const currentMetar = metarJson[0]?.rawOb || "";
+    const currentTaf = tafJson[0]?.rawTAF || "";
+    
+    if (currentMetar) {
+      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('METAR', ${currentMetar}) ON CONFLICT DO NOTHING`;
+      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('TAF', ${currentTaf}) ON CONFLICT DO NOTHING`;
+      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_ARR', ${arrAtis}) ON CONFLICT DO NOTHING`;
+      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_DEP', ${depAtis}) ON CONFLICT DO NOTHING`;
+    }
+
+    return { atisArr: arrAtis, atisDep: depAtis, metar: currentMetar, taf: currentTaf };
+  } catch (e) {
+    console.error(e);
+    return null; 
+  }
 }
 
 export default async function Page() {
   const data = await fetchAeroData();
-  if (!data) return <div style={{color: 'white', padding: '20px'}}>CONNECTING TO VHHH...</div>;
+  if (!data) return <div style={{color: 'white', padding: '20px'}}>SYNCING WITH HKCAD...</div>;
 
   const wx = parseMetar(data.metar);
-  const tafBlocks = decodeTAF(data.taf);
   const isOps07 = data.atisArr.includes("07") || data.atisDep.includes("07");
   const runwayConfig = [{ id: "N", l: "07L", r: "25R" }, { id: "C", l: "07C", r: "25C" }, { id: "S", l: "07R", r: "25L" }];
 
   return (
     <main style={{ padding: '15px', backgroundColor: '#0b162a', color: 'white', minHeight: '100vh', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      {/* ADD IT RIGHT HERE, BELOW <main> AND ABOVE THE HEADER STATS */}
+      
+      {/* LAST UPDATE TIMESTAMP */}
       <div style={{ fontSize: '10px', color: '#556', textAlign: 'center', marginBottom: '10px' }}>
         SYSTEM LIVE // LAST DATA SYNC: {new Date().toLocaleTimeString('en-HK', { timeZone: 'Asia/Hong_Kong' })} HKT
       </div>
+
       {/* HEADER STATS */}
       <div style={{ width: '100%', maxWidth: '500px', display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
         <div>
@@ -90,13 +94,17 @@ export default async function Page() {
         </div>
       </div>
 
-      {/* COMPASS */}
+      {/* COMPASS (Visualizer) */}
       <div style={{ position: 'relative', width: 'min(80vw, 300px)', height: 'min(80vw, 300px)', margin: '20px auto', border: '1px solid #2a3b5a', borderRadius: '50%' }}>
         <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', color: '#555' }}>N</div>
+        
+        {/* WIND ARROW */}
         <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.dir}deg)`, transition: 'transform 1s' }}>
           <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
           <div style={{ textAlign: 'center', marginTop: '-35px', fontWeight: 'bold', fontSize: '12px', transform: `rotate(-${wx.dir}deg)` }}>{wx.speed}K</div>
         </div>
+
+        {/* RUNWAYS */}
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '8px', width: '160px' }}>
           {runwayConfig.map((rwy) => {
             const activeArr = data.atisArr.includes(rwy.l) || data.atisArr.includes(rwy.r);
@@ -104,31 +112,16 @@ export default async function Page() {
             return (
               <div key={rwy.id} style={{ position: 'relative', height: '12px', background: '#000', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontSize: '9px' }}>
                 <span style={{color: '#666'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '1px dashed #444', margin: '0 5px' }} /><span style={{color: '#666'}}>{rwy.r}</span>
-                {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-50px', color: '#3b82f6', fontWeight: 'bold' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
-                {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-50px', color: '#f59e0b', fontWeight: 'bold' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
+                {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-55px', color: '#3b82f6', fontWeight: 'bold' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
+                {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-55px', color: '#f59e0b', fontWeight: 'bold' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* TAF TIMELINE */}
-      <div style={{ width: '100%', maxWidth: '500px', marginTop: '10px' }}>
-        <div style={{ fontSize: '10px', color: '#88a', marginBottom: '8px' }}>TAF TIMELINE (DATE / WIND / CLOUD)</div>
-        <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '15px', scrollbarWidth: 'none' }}>
-          {tafBlocks.map((b, i) => (
-            <div key={i} style={{ flex: '0 0 110px', background: '#162540', padding: '10px', borderRadius: '6px', border: '1px solid #2a3b5a' }}>
-              <div style={{ fontSize: '9px', color: '#3b82f6' }}>{b.date}th | {b.type}</div>
-              <div style={{ fontSize: '10px', color: '#88a', marginBottom: '4px' }}>{b.time}</div>
-              <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#4ade80' }}>{b.dir}°/{b.spd}K</div>
-              <div style={{ fontSize: '9px', color: '#aaa', marginTop: '5px', height: '22px', overflow: 'hidden' }}>{b.clouds}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* RAW DATA */}
-      <div style={{ width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '10px' }}>
+      {/* ATIS BOXES */}
+      <div style={{ width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         <div style={{ padding: '10px', background: 'rgba(59, 130, 246, 0.1)', borderLeft: '3px solid #3b82f6', fontSize: '10px' }}>{data.atisArr}</div>
         <div style={{ padding: '10px', background: 'rgba(245, 158, 11, 0.1)', borderLeft: '3px solid #f59e0b', fontSize: '10px' }}>{data.atisDep}</div>
         <div style={{ padding: '10px', background: '#111', borderLeft: '3px solid #fff', fontSize: '9px', color: '#888' }}>{data.metar}</div>
