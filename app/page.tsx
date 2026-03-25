@@ -1,8 +1,8 @@
 import { sql } from '@vercel/postgres';
 import Link from 'next/link';
 
-// Forces Vercel to refresh data for your Uptime bot
-export const dynamic = 'force-dynamic';
+// OPTIMIZATION 1: Cache the page for 60 seconds (Instant loads for users!)
+export const revalidate = 60;
 
 // --- HELPERS ---
 function parseCloud(text: string) {
@@ -28,28 +28,26 @@ function parseMetar(metar: string) {
   };
 }
 
-// NEW HELPER: Strictly extract runways only from the first sentence
+// Strictly extract runways only from the first sentence
 function getActiveRunways(atis: string, type: 'ARRIVALS' | 'DEPARTURES'): string[] {
-  // Look for "ARRIVALS, RWY..." or "DEPARTURES, RWY..." and stop at the first period
   const regex = new RegExp(`${type},\\s*RWY\\s*([^.]+)`, 'i');
   const match = atis.match(regex);
   if (!match) return [];
   
-  // Find all runway codes (e.g., 07L, 25R) within that specific sentence
   const rwyMatch = match[1].match(/\b(07|25)[LRC]?\b/gi);
   if (!rwyMatch) return [];
   
-  // Remove duplicates
   return [...new Set(rwyMatch.map(r => r.toUpperCase()))];
 }
 
 // --- DATA FETCHING ---
 async function fetchAeroData() {
   try {
+    // OPTIMIZATION 2: Removed 'no-store' so Next.js handles the 60s cache automatically
     const [atisRes, metarRes, tafRes] = await Promise.all([
-      fetch('https://atis.cad.gov.hk/ATIS/ATISweb/atis.php', { cache: 'no-store' }),
-      fetch('https://aviationweather.gov/api/data/metar?ids=VHHH&format=json', { cache: 'no-store' }),
-      fetch('https://aviationweather.gov/api/data/taf?ids=VHHH&format=json', { cache: 'no-store' })
+      fetch('https://atis.cad.gov.hk/ATIS/ATISweb/atis.php'),
+      fetch('https://aviationweather.gov/api/data/metar?ids=VHHH&format=json'),
+      fetch('https://aviationweather.gov/api/data/taf?ids=VHHH&format=json')
     ]);
     
     const html = await atisRes.text();
@@ -65,15 +63,17 @@ async function fetchAeroData() {
     const metarJson = await metarRes.json();
     const tafJson = await tafRes.json();
 
-    // Save to Database for the History Chart
     const currentMetar = metarJson[0]?.rawOb || "";
     const currentTaf = tafJson[0]?.rawTAF || "";
     
+    // OPTIMIZATION 3: Run all 4 database inserts in parallel to save time
     if (currentMetar) {
-      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('METAR', ${currentMetar}) ON CONFLICT DO NOTHING`;
-      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('TAF', ${currentTaf}) ON CONFLICT DO NOTHING`;
-      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_ARR', ${arrAtis}) ON CONFLICT DO NOTHING`;
-      await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_DEP', ${depAtis}) ON CONFLICT DO NOTHING`;
+      await Promise.all([
+        sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('METAR', ${currentMetar}) ON CONFLICT DO NOTHING`,
+        sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('TAF', ${currentTaf}) ON CONFLICT DO NOTHING`,
+        sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_ARR', ${arrAtis}) ON CONFLICT DO NOTHING`,
+        sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_DEP', ${depAtis}) ON CONFLICT DO NOTHING`
+      ]);
     }
 
     return { atisArr: arrAtis, atisDep: depAtis, metar: currentMetar, taf: currentTaf };
@@ -89,11 +89,9 @@ export default async function Page() {
 
   const wx = parseMetar(data.metar);
   
-  // Extract specific runways to prevent false positives (like "EXP RWY 07C")
   const arrRunways = getActiveRunways(data.atisArr, 'ARRIVALS');
   const depRunways = getActiveRunways(data.atisDep, 'DEPARTURES');
   
-  // Fallback to check general direction if the strict parser missed it
   const isOps07 = arrRunways.some(r => r.includes("07")) || 
                   depRunways.some(r => r.includes("07")) || 
                   data.atisArr.includes("07");
@@ -134,7 +132,6 @@ export default async function Page() {
         {/* RUNWAYS */}
         <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '8px', width: '160px' }}>
           {runwayConfig.map((rwy) => {
-            // STRICT CHECK: Only mark active if found in the isolated sentence
             const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
             const activeDep = depRunways.includes(rwy.l) || depRunways.includes(rwy.r);
             
@@ -159,4 +156,4 @@ export default async function Page() {
       <Link href="/history" style={{ marginTop: '20px', color: '#445', fontSize: '12px', textDecoration: 'none' }}>[ VIEW ARCHIVE ]</Link>
     </main>
   );
-}
+      }
