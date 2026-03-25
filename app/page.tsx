@@ -1,4 +1,5 @@
 import { sql } from '@vercel/postgres';
+import { revalidatePath } from 'next/cache';
 
 // --- HELPERS ---
 function extractZTime(text: string) {
@@ -7,75 +8,103 @@ function extractZTime(text: string) {
 }
 
 function parseWind(metar: string) {
-  const match = metar.match(/(\d{3})(\d{2})KT/); // Matches 04008KT -> 040 and 08
-  return match ? { dir: match[1], speed: match[2] } : { dir: "000", speed: "0" };
+  const match = metar.match(/(\d{3})(\d{2})KT/); 
+  return match ? { dir: parseInt(match[1]), speed: match[2] } : { dir: 0, speed: "0" };
 }
 
-function getRunwayStatus(atis: string) {
-  const arrMatch = atis.match(/ARRIVALS?,?\s+RWY\s+([\w\/]+)/i);
-  const depMatch = atis.match(/DEPARTURES?,?\s+RWY\s+([\w\/]+)/i);
-  return {
-    arr: arrMatch ? arrMatch[1].split('/') : [],
-    dep: depMatch ? depMatch[1].split('/') : []
-  };
+async function fetchATIS() {
+  try {
+    const res = await fetch('https://atis.cad.gov.hk/ATIS/ATISweb/atis.php', { cache: 'no-store' });
+    const html = await res.text();
+    const clean = html.replace(/<[^>]*>?/gm, ' ').replace(/\s+/g, ' ');
+    
+    const arrMatch = clean.match(/(VHHH ARR ATIS.*?FIRST CTC WITH APP)/i);
+    const depMatch = clean.match(/(VHHH DEP ATIS.*?FIRST CTC WITH DELIVERY)/i);
+    
+    return {
+      arr: arrMatch ? arrMatch[1].trim() : "",
+      dep: depMatch ? depMatch[1].split('DEPARTURE')[1]?.trim() || depMatch[1].trim() : ""
+    };
+  } catch (e) { return null; }
 }
 
 export default async function Page() {
-  const { rows } = await sql`SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 10`;
+  // 1. Fetch Fresh Data
+  const newAtis = await fetchATIS();
+  const resMetar = await fetch(`https://aviationweather.gov/api/data/metar?ids=VHHH&format=json`, { cache: 'no-store' });
+  const metarData = await resMetar.json();
+  const latestMetar = metarData[0]?.rawOb || "";
+
+  // 2. Database Sync (Lazy)
+  if (newAtis?.arr) {
+    await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_ARR', ${newAtis.arr}) ON CONFLICT DO NOTHING`;
+    await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('ATIS_DEP', ${newAtis.dep}) ON CONFLICT DO NOTHING`;
+    await sql`INSERT INTO aero_data (data_type, raw_text) VALUES ('METAR', ${latestMetar}) ON CONFLICT DO NOTHING`;
+  }
+
+  const atisArr = newAtis?.arr || "";
+  const atisDep = newAtis?.dep || "";
+  const wind = parseWind(latestMetar);
   
-  const atis = rows.find(r => r.data_type === 'ATIS')?.raw_text || "";
-  const metar = rows.find(r => r.data_type === 'METAR')?.raw_text || "";
-  
-  const wind = parseWind(metar);
-  const rwys = getRunwayStatus(atis);
-  
-  const runwayList = ["07L/25R", "07C/25C", "07R/25L"];
+  // Determine if we are on 07 or 25 ops based on ATIS text
+  const isOps07 = atisArr.includes("07") || atisDep.includes("07");
+
+  const runwayList = [
+    { id: "07L/25R", label: "NORTH (07L/25R)" },
+    { id: "07C/25C", label: "CENTRAL (07C/25C)" },
+    { id: "07R/25L", label: "SOUTH (07R/25L)" }
+  ];
 
   return (
-    <main style={{ padding: '20px', fontFamily: 'sans-serif', backgroundColor: '#1a1a1a', color: 'white', minHeight: '100vh' }}>
-      <h1>VHHH Visual Dashboard</h1>
+    <main style={{ padding: '30px', fontFamily: 'monospace', backgroundColor: '#0a0a0a', color: '#00ff00', minHeight: '100vh' }}>
+      <h1 style={{ borderBottom: '1px solid #333', paddingBottom: '10px' }}>VHHH OPERATIONAL DASHBOARD</h1>
 
-      {/* WIND SECTION */}
-      <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', alignItems: 'center' }}>
-        <div style={{ fontSize: '40px', fontWeight: 'bold', color: '#00ff00' }}>
-          WIND: {wind.dir}° / {wind.speed} KT
+      <div style={{ display: 'flex', gap: '40px', marginBottom: '40px' }}>
+        <div>
+          <div style={{ fontSize: '12px', color: '#888' }}>WIND</div>
+          <div style={{ fontSize: '32px' }}>{wind.dir}° / {wind.speed} KT</div>
         </div>
-        <div style={{ 
-          width: '50px', height: '50px', border: '2px solid white', borderRadius: '50%', position: 'relative',
-          transform: `rotate(${wind.dir}deg)`
-        }}>
-          <div style={{ position: 'absolute', top: '0', left: '50%', height: '50%', width: '2px', background: 'red' }} />
+        <div>
+          <div style={{ fontSize: '12px', color: '#888' }}>ACTIVE OPS</div>
+          <div style={{ fontSize: '32px' }}>{isOps07 ? "RWY 07" : "RWY 25"}</div>
         </div>
       </div>
 
-      {/* RUNWAY VISUALIZER */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', maxWidth: '800px' }}>
-        {runwayList.map((id) => {
-          const isArr = rwys.arr.some(r => id.includes(r));
-          const isDep = rwys.dep.some(r => id.includes(r));
-          
+      {/* VISUAL RUNWAYS */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '50px', maxWidth: '900px', margin: '60px 0' }}>
+        {runwayList.map((rwy) => {
+          const activeArr = atisArr.includes(rwy.id.split('/')[isOps07 ? 0 : 1]);
+          const activeDep = atisDep.includes(rwy.id.split('/')[isOps07 ? 0 : 1]);
+
           return (
-            <div key={id} style={{ position: 'relative' }}>
-              <div style={{ position: 'absolute', top: '-25px', left: '0', fontSize: '12px' }}>{id}</div>
+            <div key={rwy.id} style={{ position: 'relative' }}>
+              <div style={{ position: 'absolute', top: '-20px', fontSize: '12px', color: '#aaa' }}>{rwy.label}</div>
               
-              {/* The Runway Rectangle */}
-              <div style={{ height: '40px', width: '100%', backgroundColor: '#333', border: '2px solid #555', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 10px' }}>
-                <span style={{color: '#aaa'}}>07</span>
-                <div style={{ height: '2px', flex: 1, borderTop: '2px dashed #555', margin: '0 20px' }} />
-                <span style={{color: '#aaa'}}>25</span>
+              <div style={{ height: '40px', background: '#1a1a1a', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 15px' }}>
+                <span>07</span>
+                <div style={{ flex: 1, borderTop: '2px dashed #444', margin: '0 20px' }} />
+                <span>25</span>
               </div>
 
-              {/* Arrival Arrow (Points TOWARDS runway from the right for 25 ops) */}
-              {isArr && (
-                <div style={{ position: 'absolute', right: '-60px', top: '10px', color: '#3498db', fontWeight: 'bold' }}>
-                  ARR ➔
+              {/* ARRIVAL ARROW */}
+              {activeArr && (
+                <div style={{ 
+                  position: 'absolute', 
+                  [isOps07 ? 'left' : 'right']: '-100px', 
+                  top: '10px', color: '#3498db', fontWeight: 'bold' 
+                }}>
+                  {isOps07 ? 'ARR ➔' : '← ARR'}
                 </div>
               )}
 
-              {/* Departure Arrow (Points AWAY from runway to the left for 25 ops) */}
-              {isDep && (
-                <div style={{ position: 'absolute', left: '-80px', top: '10px', color: '#e67e22', fontWeight: 'bold' }}>
-                   🛫 DEP
+              {/* DEPARTURE ARROW */}
+              {activeDep && (
+                <div style={{ 
+                  position: 'absolute', 
+                  [isOps07 ? 'right' : 'left']: '-100px', 
+                  top: '10px', color: '#f1c40f', fontWeight: 'bold' 
+                }}>
+                  {isOps07 ? '🛫 DEP' : 'DEP 🛫'}
                 </div>
               )}
             </div>
@@ -83,11 +112,21 @@ export default async function Page() {
         })}
       </div>
 
-      {/* RAW TEXT DATA */}
-      <div style={{ marginTop: '50px', fontSize: '12px', color: '#888' }}>
-        <p>ATIS: {atis || "Waiting for ATIS update..."}</p>
-        <p>METAR: {metar}</p>
-        <a href="/history" style={{ color: '#3498db' }}>View Full History</a>
+      {/* TEXT DATA BOXES */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '13px' }}>
+        <div style={{ background: '#111', padding: '15px', borderLeft: '4px solid #3498db' }}>
+          <div style={{ color: '#3498db', marginBottom: '5px' }}>ARRIVAL ATIS</div>
+          {atisArr || "WAITING FOR UPDATE..." }
+        </div>
+        <div style={{ background: '#111', padding: '15px', borderLeft: '4px solid #f1c40f' }}>
+          <div style={{ color: '#f1c40f', marginBottom: '5px' }}>DEPARTURE ATIS</div>
+          {atisDep || "WAITING FOR UPDATE..." }
+        </div>
+      </div>
+      
+      <div style={{ marginTop: '20px', padding: '15px', background: '#111', borderLeft: '4px solid #fff' }}>
+        <div style={{ color: '#fff', marginBottom: '5px' }}>METAR</div>
+        {latestMetar}
       </div>
     </main>
   );
