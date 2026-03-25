@@ -2,20 +2,26 @@ import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const { rows } = await sql`SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 300`;
+  // Increase limit to ensure we capture enough historical data points
+  const { rows } = await sql`SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 400`;
   
   const now = new Date();
   const startTime = new Date(now.getTime() - (24 * 60 * 60 * 1000)); // 24h ago
-  const endTime = new Date(now.getTime() + (12 * 60 * 60 * 1000));  // 12h future
   
   const groups: any = {};
 
-  // 1. Create hourly slots for the full 36-hour range to force the scale
+  // 1. Create hourly slots for the full 36-hour range (Fixed TypeScript Logic)
   for (let i = 0; i <= 36; i++) {
     const slot = new Date(startTime.getTime() + (i * 60 * 60 * 1000));
-    const label = slot.toLocaleTimeString('en-HK', { 
-      hour: '2-digit', minute: '00', hour12: false, timeZone: 'Asia/Hong_Kong' 
+    const rawLabel = slot.toLocaleTimeString('en-HK', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: false, 
+      timeZone: 'Asia/Hong_Kong' 
     });
+    // Force to :00 format to ensure clean hourly buckets
+    const label = rawLabel.split(':')[0] + ':00';
+    
     groups[label] = { 
       time: label, 
       timestamp: slot.getTime(),
@@ -23,16 +29,16 @@ export async function GET() {
     };
   }
 
-  // 2. Map real data into the closest hourly slots
+  // 2. Map real data into the slots
   rows.forEach(r => {
     const rDate = new Date(r.created_at);
-    // Inside your API loop
-    const label = slot.toLocaleTimeString('en-HK', { 
-     hour: '2-digit', 
-     minute: '2-digit', // Changed from '00' to '2-digit'
-     hour12: false, 
-     timeZone: 'Asia/Hong_Kong' 
-  }).split(':')[0] + ':00'; // Force to :00
+    const rawLabel = rDate.toLocaleTimeString('en-HK', { 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      hour12: false, 
+      timeZone: 'Asia/Hong_Kong' 
+    });
+    const label = rawLabel.split(':')[0] + ':00';
 
     if (groups[label]) {
       const wind = r.raw_text.match(/(\d{3})(\d{2})KT/);
@@ -48,9 +54,8 @@ export async function GET() {
         groups[label].tafDir = parseInt(wind?.[1] || "0");
         groups[label].tafTemp = tafTempMatch ? parseInt(tafTempMatch[1]) : null;
       }
-      // Store raw data for the table (optional)
+      // Keep raw data for the table display
       groups[label].raw = r.raw_text;
-      groups[label].type = r.data_type;
     }
   });
 
