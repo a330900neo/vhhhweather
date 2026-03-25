@@ -73,7 +73,10 @@ export default async function Page() {
 
   return (
     <main style={{ padding: '15px', backgroundColor: '#0b162a', color: 'white', minHeight: '100vh', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      
+      {/* ADD IT RIGHT HERE, BELOW <main> AND ABOVE THE HEADER STATS */}
+      <div style={{ fontSize: '10px', color: '#556', textAlign: 'center', marginBottom: '10px' }}>
+        SYSTEM LIVE // LAST DATA SYNC: {new Date().toLocaleTimeString('en-HK', { timeZone: 'Asia/Hong_Kong' })} HKT
+      </div>
       {/* HEADER STATS */}
       <div style={{ width: '100%', maxWidth: '500px', display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
         <div>
