@@ -6,11 +6,25 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 
+// 1. ADD THIS INTERFACE TO STOP THE "NEVER" ERROR
+interface AeroHistory {
+  time: string;
+  timestamp: number;
+  actSpd?: number;
+  actDir?: number;
+  actTemp?: number;
+  tafSpd?: number;
+  tafDir?: number;
+  tafTemp?: number;
+  raw?: string;
+  isFuture: boolean;
+}
+
 export default function HistoryPage() {
-  const [data, setData] = useState([]);
+  // 2. APPLY THE TYPE HERE
+  const [data, setData] = useState<AeroHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // FIXED: Calculate current hour label safely for TypeScript
   const rawTime = new Date().toLocaleTimeString('en-HK', { 
     hour: '2-digit', 
     minute: '2-digit', 
@@ -105,7 +119,6 @@ export default function HistoryPage() {
             </ResponsiveContainer>
           </div>
         </div>
-
       </div>
 
       {/* DATA LOG */}
@@ -120,10 +133,12 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {[...data].reverse().filter(d => d.raw).map((row: any, i: number) => (
+            {[...data].reverse().filter(d => d.raw).map((row, i) => (
               <tr key={i} style={{ borderBottom: '1px solid #162540' }}>
                 <td style={{ padding: '12px', color: '#88a' }}>{row.time}</td>
-                <td style={{ color: row.actSpd ? '#4ade80' : '#3b82f6', fontWeight: 'bold' }}>{row.actSpd ? 'METAR' : 'TAF'}</td>
+                <td style={{ color: row.actSpd ? '#4ade80' : '#3b82f6', fontWeight: 'bold' }}>
+                    {row.actSpd ? 'METAR' : 'TAF'}
+                </td>
                 <td style={{ color: '#ccc', fontSize: '9px' }}>{row.raw}</td>
               </tr>
             ))}
