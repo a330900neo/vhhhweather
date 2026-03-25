@@ -80,24 +80,32 @@ export async function GET() {
     });
   }
 
-  // 5. THE MAGIC: Overwrite the safety net with precise API hour-by-hour JSON data
+// 5. THE MAGIC: Overwrite the safety net with precise API hour-by-hour JSON data
   if (liveTafFcsts.length > 0) {
     Object.values(groups).forEach((group: any) => {
-      const activeFcst = liveTafFcsts.find((fcst: any) => {
-        // Bulletproof time converter: handles both Unix seconds AND ISO Strings seamlessly
-        const fromTime = typeof fcst.timeFrom === 'number' ? (fcst.timeFrom < 10000000000 ? fcst.timeFrom * 1000 : fcst.timeFrom) : new Date(fcst.timeFrom).getTime();
-        const toTime = typeof fcst.timeTo === 'number' ? (fcst.timeTo < 10000000000 ? fcst.timeTo * 1000 : fcst.timeTo) : new Date(fcst.timeTo).getTime();
+      
+      // FIX: Use .filter() to find ALL overlapping forecast blocks for this hour, not just the first one
+      const activeFcsts = liveTafFcsts.filter((fcst: any) => {
+        const fromTime = typeof fcst.timeFrom === 'number' 
+          ? (fcst.timeFrom < 10000000000 ? fcst.timeFrom * 1000 : fcst.timeFrom) 
+          : new Date(fcst.timeFrom).getTime();
+        const toTime = typeof fcst.timeTo === 'number' 
+          ? (fcst.timeTo < 10000000000 ? fcst.timeTo * 1000 : fcst.timeTo) 
+          : new Date(fcst.timeTo).getTime();
         
         return group.timestamp >= fromTime && group.timestamp < toTime;
       });
 
-      if (activeFcst) {
-        group.tafSpd = activeFcst.wspd ?? group.tafSpd;
-        group.tafDir = activeFcst.wdir ?? group.tafDir;
+      // Apply them in order. Because TEMPO/BECMG modifiers are listed later in the TAF array,
+      // they will overwrite the base layer for these specific hours!
+      if (activeFcsts.length > 0) {
+        activeFcsts.forEach((fcst: any) => {
+          if (fcst.wspd !== undefined && fcst.wspd !== null) group.tafSpd = fcst.wspd;
+          if (fcst.wdir !== undefined && fcst.wdir !== null) group.tafDir = fcst.wdir;
+        });
       }
     });
   }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formatted = Object.values(groups).sort((a: any, b: any) => a.timestamp - b.timestamp);
   return NextResponse.json(formatted);
