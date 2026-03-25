@@ -42,7 +42,11 @@ export async function GET() {
     groups[uniqueKey] = { 
       time: timeLabel, 
       timestamp: slot.getTime(),
-      isFuture: slot > now 
+      isFuture: slot > now,
+      actSpd: null, // FIX: Initialize as null to prevent Recharts Tooltip from jumping!
+      actDir: null, // FIX: Initialize as null
+      tafSpd: null, 
+      tafDir: null  
     };
   }
 
@@ -80,7 +84,7 @@ export async function GET() {
     });
   }
 
-// 5. THE MAGIC: Overwrite the safety net with precise API hour-by-hour JSON data
+  // 5. THE MAGIC: Overwrite the safety net with precise API hour-by-hour JSON data
   if (liveTafFcsts.length > 0) {
     Object.values(groups).forEach((group: any) => {
       
@@ -106,6 +110,7 @@ export async function GET() {
       }
     });
   }
+  
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formatted = Object.values(groups).sort((a: any, b: any) => a.timestamp - b.timestamp);
   return NextResponse.json(formatted);
