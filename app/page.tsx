@@ -72,38 +72,42 @@ async function fetchAeroData() {
     
     let maxForecastWind = 0;
     
-    // EXCTRACT CURRENT ACTIVE TAF BLOCK FOR THE WIDGET
-    let tafWindDir = 0;
-    let tafWindSpd = 0;
-    let tafTimeLabel = "N/A";
+    // EXCTRACT MULTIPLE UPCOMING TAF BLOCKS
+    let upcomingForecasts: { dir: number, spd: number, timeLabel: string }[] = [];
 
     if (tafJson[0]?.fcsts) {
       const now = Date.now();
       
-      // Calculate max wind for modified TAF string
+      // Calculate max wind
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tafJson[0].fcsts.forEach((block: any) => {
         if (block.wspd && block.wspd > maxForecastWind) maxForecastWind = block.wspd;
         if (block.wgst && block.wgst > maxForecastWind) maxForecastWind = block.wgst;
       });
 
-      // Find the forecast block currently in effect
+      // Filter for blocks that are active right now OR in the future
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const activeBlock = tafJson[0].fcsts.find((block: any) => {
-        const fromTime = typeof block.timeFrom === 'number' ? (block.timeFrom < 10000000000 ? block.timeFrom * 1000 : block.timeFrom) : new Date(block.timeFrom).getTime();
+      const relevantBlocks = tafJson[0].fcsts.filter((block: any) => {
         const toTime = typeof block.timeTo === 'number' ? (block.timeTo < 10000000000 ? block.timeTo * 1000 : block.timeTo) : new Date(block.timeTo).getTime();
-        return now >= fromTime && now < toTime;
-      }) || tafJson[0].fcsts[0]; // fallback to first block if no strict match
+        return toTime > now;
+      });
 
-      if (activeBlock) {
-        tafWindDir = activeBlock.wdir || 0;
-        tafWindSpd = activeBlock.wspd || 0;
-        const fromTime = typeof activeBlock.timeFrom === 'number' ? (activeBlock.timeFrom < 10000000000 ? activeBlock.timeFrom * 1000 : activeBlock.timeFrom) : new Date(activeBlock.timeFrom).getTime();
+      // Map the next 4 blocks for the UI
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      upcomingForecasts = relevantBlocks.slice(0, 4).map((block: any) => {
+        const fromTime = typeof block.timeFrom === 'number' ? (block.timeFrom < 10000000000 ? block.timeFrom * 1000 : block.timeFrom) : new Date(block.timeFrom).getTime();
         
-        tafTimeLabel = new Date(fromTime).toLocaleTimeString('en-HK', { 
+        // Use just the hour to keep it clean (e.g., "14:00")
+        const timeLabel = new Date(fromTime).toLocaleTimeString('en-HK', { 
           hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Hong_Kong' 
-        });
-      }
+        }).split(':')[0] + ':00';
+
+        return {
+          dir: block.wdir || 0,
+          spd: block.wspd || 0,
+          timeLabel: timeLabel
+        };
+      });
     }
 
     const maxWindStr = maxForecastWind.toString().padStart(2, '0');
@@ -123,9 +127,7 @@ async function fetchAeroData() {
       atisDep: depAtis, 
       metar: currentMetar, 
       taf: currentTaf,
-      tafWindDir,
-      tafWindSpd,
-      tafTimeLabel
+      upcomingForecasts // Returning the array!
     };
   } catch (e) {
     console.error(e);
@@ -155,8 +157,13 @@ export default async function Page() {
         .dashboard-container { width: 100%; max-width: 1400px; display: flex; flex-direction: column; gap: 20px; }
         .dashboard-row { display: flex; flex-direction: column; gap: 30px; }
         .compass-container { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; }
-        .compass-box { position: relative; width: min(80vw, 300px); height: min(80vw, 300px); border: 1px solid #2a3b5a; border-radius: 50%; margin: 0 auto; }
-        .taf-wind-box { background: #162540; padding: 15px; border-radius: 8px; border: 1px solid #2a3b5a; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 110px; }
+        .compass-box { position: relative; width: min(80vw, 300px); height: min(80vw, 300px); border: 1px solid #2a3b5a; border-radius: 50%; margin: 0 auto; flex-shrink: 0; }
+        
+        /* New Styles for Multiple TAFs */
+        .taf-row-wrapper { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 100vw; overflow: hidden; }
+        .taf-scroll-container { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; max-width: 100%; }
+        .taf-wind-box { background: #162540; padding: 15px; border-radius: 8px; border: 1px solid #2a3b5a; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 90px; flex: 0 0 auto; }
+        
         .info-box { width: 100%; max-width: 500px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
         
         @media (min-width: 1024px) {
@@ -166,6 +173,8 @@ export default async function Page() {
           .info-col { flex: 1; display: flex; justify-content: flex-start; }
           .compass-box { width: 500px; height: 500px; margin: 0; }
           .info-box { max-width: 700px; margin: 0; }
+          .taf-row-wrapper { width: auto; max-width: 400px; align-items: flex-start; }
+          .taf-scroll-container { flex-wrap: wrap; overflow-x: visible; justify-content: flex-start; }
         }
       `}} />
 
@@ -216,20 +225,28 @@ export default async function Page() {
                 </div>
               </div>
 
-              {/* NEW: TAF PREDICT WIDGET */}
-              <div className="taf-wind-box">
-                <div style={{ fontSize: '10px', color: '#8b5cf6', fontWeight: 'bold', marginBottom: '10px' }}>TAF PREDICT</div>
-                
-                {/* Mini Compass Arrow */}
-                <div style={{ width: '40px', height: '40px', borderRadius: '50%', border: '1px solid #2a3b5a', position: 'relative', background: '#0b162a' }}>
-                  <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${data.tafWindDir}deg)`, transition: 'transform 1s' }}>
-                    <div style={{ width: '0', height: '0', borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: '10px solid #8b5cf6', margin: '-5px auto' }} />
-                  </div>
-                </div>
+              {/* UPDATED: MULTIPLE TAF PREDICT WIDGETS */}
+              <div className="taf-row-wrapper">
+                <div style={{ fontSize: '10px', color: '#8b5cf6', fontWeight: 'bold', marginBottom: '10px' }}>UPCOMING TAF SHIFTS</div>
+                <div className="taf-scroll-container">
+                  {data.upcomingForecasts.map((fcst, i) => (
+                    <div key={i} className="taf-wind-box">
+                      {/* Mini Compass Arrow */}
+                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', border: '1px solid #2a3b5a', position: 'relative', background: '#0b162a' }}>
+                        <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${fcst.dir}deg)`, transition: 'transform 1s' }}>
+                          <div style={{ width: '0', height: '0', borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '8px solid #8b5cf6', margin: '-4px auto' }} />
+                        </div>
+                      </div>
 
-                <div style={{ fontSize: '16px', color: '#fff', marginTop: '10px', fontWeight: 'bold' }}>{data.tafWindDir}°</div>
-                <div style={{ fontSize: '12px', color: '#aaa', marginTop: '2px' }}>{data.tafWindSpd}KT</div>
-                <div style={{ fontSize: '10px', color: '#88a', marginTop: '8px', background: '#07101e', padding: '3px 6px', borderRadius: '4px', border: '1px solid #162540' }}>AT {data.tafTimeLabel}</div>
+                      <div style={{ fontSize: '14px', color: '#fff', marginTop: '8px', fontWeight: 'bold' }}>{fcst.dir}°</div>
+                      <div style={{ fontSize: '10px', color: '#aaa', marginTop: '2px' }}>{fcst.spd}KT</div>
+                      <div style={{ fontSize: '9px', color: '#88a', marginTop: '8px', background: '#07101e', padding: '3px 5px', borderRadius: '4px', border: '1px solid #162540' }}>FM {fcst.timeLabel}</div>
+                    </div>
+                  ))}
+                  {data.upcomingForecasts.length === 0 && (
+                    <div style={{ fontSize: '10px', color: '#556' }}>NO PENDING SHIFTS</div>
+                  )}
+                </div>
               </div>
 
             </div>
