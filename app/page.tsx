@@ -107,7 +107,6 @@ export default async function Page() {
   const arrRunways = getActiveRunways(data.atisArr, 'ARRIVALS');
   const depRunways = getActiveRunways(data.atisDep, 'DEPARTURES');
   
-  // Cleanly detect active config without triggering on ATIS timestamps
   const has07 = arrRunways.some(r => r.includes("07")) || depRunways.some(r => r.includes("07"));
   const has25 = arrRunways.some(r => r.includes("25")) || depRunways.some(r => r.includes("25"));
   const isOps07 = has07 || !has25;
@@ -117,79 +116,31 @@ export default async function Page() {
   return (
     <main style={{ padding: '15px', backgroundColor: '#0b162a', color: 'white', minHeight: '100vh', fontFamily: 'monospace', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       
-      {/* RESPONSIVE CSS STYLES */}
       <style dangerouslySetInnerHTML={{__html: `
-        .dashboard-container {
-          width: 100%;
-          max-width: 1400px; /* Increased to fill PC monitors */
-          display: flex;
-          flex-direction: column;
-          gap: 20px;
-        }
-        .dashboard-row {
-          display: flex;
-          flex-direction: column;
-          gap: 30px;
-        }
-        .compass-box {
-          position: relative;
-          width: min(80vw, 300px);
-          height: min(80vw, 300px);
-          border: 1px solid #2a3b5a;
-          border-radius: 50%;
-          margin: 0 auto;
-        }
-        .info-box {
-          width: 100%;
-          max-width: 500px;
-          margin: 0 auto;
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-        }
-        
-        /* Desktop Layout Override */
+        .dashboard-container { width: 100%; max-width: 1400px; display: flex; flex-direction: column; gap: 20px; }
+        .dashboard-row { display: flex; flex-direction: column; gap: 30px; }
+        .compass-box { position: relative; width: min(80vw, 300px); height: min(80vw, 300px); border: 1px solid #2a3b5a; border-radius: 50%; margin: 0 auto; }
+        .info-box { width: 100%; max-width: 500px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
         @media (min-width: 1024px) {
-          .dashboard-row {
-            flex-direction: row;
-            align-items: center;
-            justify-content: center;
-            gap: 60px; /* Space between compass and text */
-          }
-          .compass-col {
-            flex: 1;
-            display: flex;
-            justify-content: flex-end;
-          }
-          .info-col {
-            flex: 1;
-            display: flex;
-            justify-content: flex-start;
-          }
-          .compass-box {
-            width: 500px; /* Bigger compass on PC */
-            height: 500px;
-            margin: 0;
-          }
-          .info-box {
-            max-width: 700px; /* Wider ATIS boxes on PC */
-            margin: 0;
-          }
+          .dashboard-row { flex-direction: row; align-items: center; justify-content: center; gap: 60px; }
+          .compass-col { flex: 1; display: flex; justify-content: flex-end; }
+          .info-col { flex: 1; display: flex; justify-content: flex-start; }
+          .compass-box { width: 500px; height: 500px; margin: 0; }
+          .info-box { max-width: 700px; margin: 0; }
         }
       `}} />
 
-      {/* LAST UPDATE TIMESTAMP */}
       <div style={{ fontSize: '10px', color: '#556', textAlign: 'center', marginBottom: '15px' }}>
         SYSTEM LIVE // LAST DATA SYNC: {new Date().toLocaleTimeString('en-HK', { timeZone: 'Asia/Hong_Kong' })} HKT
       </div>
 
       <div className="dashboard-container">
         
-        {/* HEADER STATS (Stays on top) */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', padding: '0 20px' }}>
           <div>
             <div style={{ fontSize: '10px', color: '#88a' }}>WIND / VIS / TEMP</div>
-            <div style={{ fontSize: '18px', color: '#4ade80' }}>{wx.dir}°/{wx.speed}K <span style={{color: '#fff'}}>{wx.vis} {wx.temp}°C</span></div>
+            {/* ADDED 'KT' HERE */}
+            <div style={{ fontSize: '18px', color: '#4ade80' }}>{wx.dir}°/{wx.speed}KT <span style={{color: '#fff'}}>{wx.vis} {wx.temp}°C</span></div>
             <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>☁️ {wx.clouds}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -198,21 +149,18 @@ export default async function Page() {
           </div>
         </div>
 
-        {/* SIDE-BY-SIDE CONTAINER */}
         <div className="dashboard-row">
           
-          {/* LEFT: COMPASS */}
           <div className="compass-col">
             <div className="compass-box">
               <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', color: '#555' }}>N</div>
               
-              {/* WIND ARROW */}
               <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.dir}deg)`, transition: 'transform 1s' }}>
                 <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
-                <div style={{ textAlign: 'center', marginTop: '-35px', fontWeight: 'bold', fontSize: '12px', transform: `rotate(-${wx.dir}deg)` }}>{wx.speed}K</div>
+                {/* ADDED 'KT' HERE */}
+                <div style={{ textAlign: 'center', marginTop: '-35px', fontWeight: 'bold', fontSize: '12px', transform: `rotate(-${wx.dir}deg)` }}>{wx.speed}KT</div>
               </div>
 
-              {/* RUNWAYS */}
               <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '10px', width: '55%' }}>
                 {runwayConfig.map((rwy) => {
                   const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
@@ -230,12 +178,13 @@ export default async function Page() {
             </div>
           </div>
 
-          {/* RIGHT: ATIS & ARCHIVE LINK */}
           <div className="info-col">
             <div className="info-box">
               <div style={{ padding: '15px', background: 'rgba(59, 130, 246, 0.1)', borderLeft: '3px solid #3b82f6', fontSize: '11px', lineHeight: '1.4' }}>{data.atisArr}</div>
               <div style={{ padding: '15px', background: 'rgba(245, 158, 11, 0.1)', borderLeft: '3px solid #f59e0b', fontSize: '11px', lineHeight: '1.4' }}>{data.atisDep}</div>
               <div style={{ padding: '15px', background: '#111', borderLeft: '3px solid #fff', fontSize: '10px', color: '#888', lineHeight: '1.4' }}>{data.metar}</div>
+              {/* NEW TAF BOX */}
+              <div style={{ padding: '15px', background: '#0a101d', borderLeft: '3px solid #8b5cf6', fontSize: '10px', color: '#99a', lineHeight: '1.4' }}>{data.taf}</div>
               
               <Link href="/history" style={{ marginTop: '10px', color: '#445', fontSize: '12px', textDecoration: 'none', textAlign: 'right' }}>[ VIEW ARCHIVE ]</Link>
             </div>
