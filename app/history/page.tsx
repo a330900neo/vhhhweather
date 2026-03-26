@@ -16,7 +16,7 @@ interface AeroHistory {
   tafDir?: number;
   tafTemp?: number;
   raw?: string;
-  dataType?: string; // ADDED: To cleanly identify ATIS, METAR, or TAF
+  dataType?: string; 
   isFuture: boolean;
 }
 
@@ -25,10 +25,7 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
 
   const rawTime = new Date().toLocaleTimeString('en-HK', { 
-    hour: '2-digit', 
-    minute: '2-digit', 
-    hour12: false, 
-    timeZone: 'Asia/Hong_Kong' 
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Hong_Kong' 
   });
   const currentHourLabel = rawTime.split(':')[0] + ':00';
 
@@ -50,7 +47,6 @@ export default function HistoryPage() {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formatXAxis = (tickItem: any, index: number) => {
     return index % 4 === 0 ? tickItem : '';
   };
@@ -75,7 +71,9 @@ export default function HistoryPage() {
                 <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                 <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
-                <Line type="monotone" dataKey="actSpd" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                
+                {/* CHANGED TO LINEAR */}
+                <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
                 <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
               </LineChart>
             </ResponsiveContainer>
@@ -94,7 +92,9 @@ export default function HistoryPage() {
                 <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                 <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} />
-                <Line type="monotone" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                
+                {/* CHANGED TO LINEAR */}
+                <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
                 <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
               </LineChart>
             </ResponsiveContainer>
@@ -113,7 +113,9 @@ export default function HistoryPage() {
                 <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                 <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} />
-                <Line type="monotone" dataKey="actTemp" stroke="#f87171" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                
+                {/* CHANGED TO LINEAR */}
+                <Line type="linear" dataKey="actTemp" stroke="#f87171" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
                 <Line type="stepAfter" dataKey="tafTemp" stroke="#fb923c" name="Forecast (TX)" strokeDasharray="5 5" strokeWidth={2} connectNulls />
               </LineChart>
             </ResponsiveContainer>
@@ -134,10 +136,9 @@ export default function HistoryPage() {
           </thead>
           <tbody>
             {[...data].reverse().filter(d => d.raw).map((row, i) => {
-              // Color code the types
               let typeColor = '#3b82f6'; // TAF default blue
-              if (row.dataType === 'METAR') typeColor = '#4ade80'; // Green
-              if (row.dataType?.includes('ATIS')) typeColor = '#f59e0b'; // Orange
+              if (row.dataType === 'METAR') typeColor = '#4ade80'; 
+              if (row.dataType?.includes('ATIS')) typeColor = '#f59e0b'; 
 
               return (
                 <tr key={i} style={{ borderBottom: '1px solid #162540' }}>
