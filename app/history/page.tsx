@@ -24,11 +24,6 @@ export default function HistoryPage() {
   const [data, setData] = useState<AeroHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const rawTime = new Date().toLocaleTimeString('en-HK', { 
-    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Hong_Kong' 
-  });
-  const currentHourLabel = rawTime.split(':')[0] + ':00';
-
   useEffect(() => {
     fetch('/api/history')
       .then(res => res.json())
@@ -60,23 +55,41 @@ export default function HistoryPage() {
     );
   }
 
+  // UPDATED: Dynamically format the "NOW" label to match either HH:00 or DD/HH:00 depending on API output
+  const nowD = new Date();
+  const hkHour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Hong_Kong', hour: '2-digit', hour12: false }).format(nowD);
+  const hkDay = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Hong_Kong', day: '2-digit' }).format(nowD);
+  
+  let currentHourLabel = `${hkHour}:00`;
+  if (data.length > 0 && data[0].time && data[0].time.includes('/')) {
+    currentHourLabel = `${hkDay}/${hkHour}:00`;
+  }
+
   const formatXAxis = (tickItem: any, index: number) => {
     return index % 2 === 0 ? tickItem : ''; // Show every 2nd hour to keep it clean
   };
 
   return (
     <main style={{ padding: '15px', backgroundColor: '#0b162a', color: 'white', minHeight: '100vh', fontFamily: 'monospace' }}>
+      
+      {/* CSS to handle mobile vertical stacking vs desktop horizontal layout */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .chart-grid { display: flex; flex-direction: column; gap: 20px; padding-bottom: 20px; }
+        @media (min-width: 1024px) {
+          .chart-grid { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+        }
+      `}} />
+
       <Link href="/" style={{ color: '#3b82f6', textDecoration: 'none', fontSize: '12px' }}>← DASHBOARD</Link>
       
       <h2 style={{ fontSize: '18px', margin: '15px 0' }}>VHHH 54-HOUR TREND & FORECAST</h2>
 
-      <div style={{ display: 'flex', gap: '15px', overflowX: 'auto', paddingBottom: '20px', scrollbarWidth: 'none' }}>
+      <div className="chart-grid">
         
         {/* WIND SPEED */}
         <div style={{ minWidth: '340px', flex: '1', background: '#162540', padding: '15px', borderRadius: '8px', border: '1px solid #2a3b5a' }}>
           <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>WIND SPEED (KT) &lt;-- SCROLL --&gt;</div>
           <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
-            {/* THIS INNER DIV MAKES IT SCROLLABLE */}
             <div style={{ width: '1200px', height: 250 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data}>
@@ -141,7 +154,7 @@ export default function HistoryPage() {
       </div>
 
       {/* DATA LOG */}
-      <h3 style={{ fontSize: '14px', marginTop: '20px', color: '#88a' }}>LOG ARCHIVE</h3>
+      <h3 style={{ fontSize: '14px', marginTop: '10px', color: '#88a' }}>LOG ARCHIVE</h3>
       <div style={{ overflowX: 'auto', background: '#07101e', borderRadius: '4px', border: '1px solid #162540' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
           <thead>
