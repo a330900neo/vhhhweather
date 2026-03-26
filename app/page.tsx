@@ -121,7 +121,7 @@ export default async function Page() {
       <style dangerouslySetInnerHTML={{__html: `
         .dashboard-container {
           width: 100%;
-          max-width: 900px;
+          max-width: 1400px; /* Increased to fill PC monitors */
           display: flex;
           flex-direction: column;
           gap: 20px;
@@ -131,20 +131,49 @@ export default async function Page() {
           flex-direction: column;
           gap: 30px;
         }
+        .compass-box {
+          position: relative;
+          width: min(80vw, 300px);
+          height: min(80vw, 300px);
+          border: 1px solid #2a3b5a;
+          border-radius: 50%;
+          margin: 0 auto;
+        }
+        .info-box {
+          width: 100%;
+          max-width: 500px;
+          margin: 0 auto;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        
         /* Desktop Layout Override */
-        @media (min-width: 768px) {
+        @media (min-width: 1024px) {
           .dashboard-row {
             flex-direction: row;
             align-items: center;
             justify-content: center;
+            gap: 60px; /* Space between compass and text */
           }
           .compass-col {
             flex: 1;
             display: flex;
-            justify-content: center;
+            justify-content: flex-end;
           }
           .info-col {
             flex: 1;
+            display: flex;
+            justify-content: flex-start;
+          }
+          .compass-box {
+            width: 500px; /* Bigger compass on PC */
+            height: 500px;
+            margin: 0;
+          }
+          .info-box {
+            max-width: 700px; /* Wider ATIS boxes on PC */
+            margin: 0;
           }
         }
       `}} />
@@ -157,7 +186,7 @@ export default async function Page() {
       <div className="dashboard-container">
         
         {/* HEADER STATS (Stays on top) */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', padding: '0 10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', padding: '0 20px' }}>
           <div>
             <div style={{ fontSize: '10px', color: '#88a' }}>WIND / VIS / TEMP</div>
             <div style={{ fontSize: '18px', color: '#4ade80' }}>{wx.dir}°/{wx.speed}K <span style={{color: '#fff'}}>{wx.vis} {wx.temp}°C</span></div>
@@ -174,7 +203,7 @@ export default async function Page() {
           
           {/* LEFT: COMPASS */}
           <div className="compass-col">
-            <div style={{ position: 'relative', width: 'min(80vw, 300px)', height: 'min(80vw, 300px)', border: '1px solid #2a3b5a', borderRadius: '50%' }}>
+            <div className="compass-box">
               <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', color: '#555' }}>N</div>
               
               {/* WIND ARROW */}
@@ -184,16 +213,16 @@ export default async function Page() {
               </div>
 
               {/* RUNWAYS */}
-              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '8px', width: '160px' }}>
+              <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '10px', width: '55%' }}>
                 {runwayConfig.map((rwy) => {
                   const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
                   const activeDep = depRunways.includes(rwy.l) || depRunways.includes(rwy.r);
                   
                   return (
-                    <div key={rwy.id} style={{ position: 'relative', height: '12px', background: '#000', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontSize: '9px' }}>
+                    <div key={rwy.id} style={{ position: 'relative', height: '14px', background: '#000', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px', fontSize: '10px' }}>
                       <span style={{color: '#666'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '1px dashed #444', margin: '0 5px' }} /><span style={{color: '#666'}}>{rwy.r}</span>
-                      {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-55px', color: '#3b82f6', fontWeight: 'bold' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
-                      {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-55px', color: '#f59e0b', fontWeight: 'bold' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
+                      {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-60px', color: '#3b82f6', fontWeight: 'bold' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
+                      {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-60px', color: '#f59e0b', fontWeight: 'bold' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
                     </div>
                   );
                 })}
@@ -202,12 +231,14 @@ export default async function Page() {
           </div>
 
           {/* RIGHT: ATIS & ARCHIVE LINK */}
-          <div className="info-col" style={{ width: '100%', maxWidth: '500px', display: 'flex', flexDirection: 'column', gap: '8px', margin: '0 auto' }}>
-            <div style={{ padding: '10px', background: 'rgba(59, 130, 246, 0.1)', borderLeft: '3px solid #3b82f6', fontSize: '10px' }}>{data.atisArr}</div>
-            <div style={{ padding: '10px', background: 'rgba(245, 158, 11, 0.1)', borderLeft: '3px solid #f59e0b', fontSize: '10px' }}>{data.atisDep}</div>
-            <div style={{ padding: '10px', background: '#111', borderLeft: '3px solid #fff', fontSize: '9px', color: '#888' }}>{data.metar}</div>
-            
-            <Link href="/history" style={{ marginTop: '10px', color: '#445', fontSize: '12px', textDecoration: 'none', textAlign: 'right' }}>[ VIEW ARCHIVE ]</Link>
+          <div className="info-col">
+            <div className="info-box">
+              <div style={{ padding: '15px', background: 'rgba(59, 130, 246, 0.1)', borderLeft: '3px solid #3b82f6', fontSize: '11px', lineHeight: '1.4' }}>{data.atisArr}</div>
+              <div style={{ padding: '15px', background: 'rgba(245, 158, 11, 0.1)', borderLeft: '3px solid #f59e0b', fontSize: '11px', lineHeight: '1.4' }}>{data.atisDep}</div>
+              <div style={{ padding: '15px', background: '#111', borderLeft: '3px solid #fff', fontSize: '10px', color: '#888', lineHeight: '1.4' }}>{data.metar}</div>
+              
+              <Link href="/history" style={{ marginTop: '10px', color: '#445', fontSize: '12px', textDecoration: 'none', textAlign: 'right' }}>[ VIEW ARCHIVE ]</Link>
+            </div>
           </div>
 
         </div>
