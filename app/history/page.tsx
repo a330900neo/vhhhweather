@@ -6,7 +6,6 @@ import {
 } from 'recharts';
 import Link from 'next/link';
 
-// 1. ADD THIS INTERFACE TO STOP THE "NEVER" ERROR
 interface AeroHistory {
   time: string;
   timestamp: number;
@@ -17,11 +16,11 @@ interface AeroHistory {
   tafDir?: number;
   tafTemp?: number;
   raw?: string;
+  dataType?: string; // ADDED: To cleanly identify ATIS, METAR, or TAF
   isFuture: boolean;
 }
 
 export default function HistoryPage() {
-  // 2. APPLY THE TYPE HERE
   const [data, setData] = useState<AeroHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -51,6 +50,7 @@ export default function HistoryPage() {
     );
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formatXAxis = (tickItem: any, index: number) => {
     return index % 4 === 0 ? tickItem : '';
   };
@@ -133,15 +133,22 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {[...data].reverse().filter(d => d.raw).map((row, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid #162540' }}>
-                <td style={{ padding: '12px', color: '#88a' }}>{row.time}</td>
-                <td style={{ color: row.actSpd ? '#4ade80' : '#3b82f6', fontWeight: 'bold' }}>
-                    {row.actSpd ? 'METAR' : 'TAF'}
-                </td>
-                <td style={{ color: '#ccc', fontSize: '9px' }}>{row.raw}</td>
-              </tr>
-            ))}
+            {[...data].reverse().filter(d => d.raw).map((row, i) => {
+              // Color code the types
+              let typeColor = '#3b82f6'; // TAF default blue
+              if (row.dataType === 'METAR') typeColor = '#4ade80'; // Green
+              if (row.dataType?.includes('ATIS')) typeColor = '#f59e0b'; // Orange
+
+              return (
+                <tr key={i} style={{ borderBottom: '1px solid #162540' }}>
+                  <td style={{ padding: '12px', color: '#88a', whiteSpace: 'nowrap' }}>{row.time}</td>
+                  <td style={{ color: typeColor, fontWeight: 'bold', whiteSpace: 'nowrap', paddingRight: '10px' }}>
+                      {row.dataType || 'UNKNOWN'}
+                  </td>
+                  <td style={{ color: '#ccc', fontSize: '9px', paddingRight: '10px' }}>{row.raw}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
