@@ -28,14 +28,31 @@ function parseMetar(metar: string) {
 }
 
 function getActiveRunways(atis: string, type: 'ARRIVALS' | 'DEPARTURES'): string[] {
-  const regex = new RegExp(`${type},\\s*RWY\\s*([^.]+)`, 'i');
+  // 1. Find the text chunk like "ARRIVALS, RWY 25R/L"
+  const regex = new RegExp(`${type},?\\s*RWY\\s*([0-9]{2}[LCR/\\s]*)`, 'i');
   const match = atis.match(regex);
   if (!match) return [];
   
-  const rwyMatch = match[1].match(/\b(07|25)[LRC]?\b/gi);
-  if (!rwyMatch) return [];
+  // Clean up the match (e.g., "25R/L" or " 07C ")
+  const rawRunways = match[1].toUpperCase().replace(/\s+/g, ''); 
   
-  return [...new Set(rwyMatch.map(r => r.toUpperCase()))];
+  // 2. Extract the base runway number ("07" or "25")
+  const baseNumMatch = rawRunways.match(/(07|25)/);
+  if (!baseNumMatch) return [];
+  const baseNum = baseNumMatch[1];
+  
+  // 3. Extract just the letters (e.g. "R/L" becomes ["R", "L"])
+  const lettersRaw = rawRunways.replace(baseNum, '');
+  const letters = lettersRaw.match(/[LRC]/g);
+  
+  // 4. Map the base number back to each letter! 
+  // This turns ["R", "L"] into ["25R", "25L"]
+  if (letters && letters.length > 0) {
+    return [...new Set(letters.map(letter => `${baseNum}${letter}`))];
+  }
+  
+  // Fallback if there are no letters (e.g., just "25" or "07")
+  return [baseNum];
 }
 
 // --- DATA FETCHING ---
