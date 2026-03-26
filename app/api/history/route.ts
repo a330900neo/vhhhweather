@@ -6,7 +6,7 @@ export const revalidate = 0;
 export async function GET() {
   const { rows } = await sql`SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 600`;
   
-  // 1. Fetch LIVE structured JSON (Spoof standard browser so AviationWeather doesn't block us, force fresh pull)
+  // 1. Fetch LIVE structured JSON (Spoof standard browser so AviationWeather doesn't block us)
   let liveTafFcsts: any[] = [];
   try {
     const tafRes = await fetch('https://aviationweather.gov/api/data/taf?ids=VHHH&format=json', { 
@@ -26,12 +26,12 @@ export async function GET() {
   }
 
   const now = new Date();
-  const startTime = new Date(now.getTime() - (24 * 60 * 60 * 1000)); 
+  const startTime = new Date(now.getTime() - (24 * 60 * 60 * 1000)); // Start 24 hours ago
   
   const groups: any = {};
 
-  // 2. Create exact hourly slots
-  for (let i = 0; i <= 36; i++) {
+  // 2. Create exact hourly slots (54 hours = 24h past + 30h future TAF predict)
+  for (let i = 0; i <= 54; i++) {
     const slot = new Date(startTime.getTime() + (i * 60 * 60 * 1000));
     const timeLabel = slot.toLocaleTimeString('en-HK', { 
       hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Hong_Kong' 
@@ -74,7 +74,6 @@ export async function GET() {
         }
       }
 
-      // FIX: Ensure TAF is allowed into the log archive table alongside ATIS and METAR!
       if (!groups[uniqueKey].raw && (r.data_type.includes('ATIS') || r.data_type === 'METAR' || r.data_type === 'TAF')) {
         groups[uniqueKey].raw = r.raw_text;
         groups[uniqueKey].dataType = r.data_type;
@@ -107,7 +106,7 @@ export async function GET() {
     });
   }
 
-  // 5. Overwrite flat line with bumpy hour-by-hour JSON data
+  // 5. Overwrite flat line with hour-by-hour Future JSON data
   if (liveTafFcsts.length > 0) {
     Object.values(groups).forEach((group: any) => {
       const activeFcsts = liveTafFcsts.filter((fcst: any) => {

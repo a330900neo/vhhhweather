@@ -39,86 +39,103 @@ export default function HistoryPage() {
       .catch(err => console.error("History fetch error:", err));
   }, []);
 
+  // Auto-scroll charts to show the "NOW" line in the center
+  useEffect(() => {
+    if (!loading) {
+      setTimeout(() => {
+        const scrollers = document.querySelectorAll('.chart-scroll-container');
+        scrollers.forEach((el: any) => {
+          // Scrolls slightly left of center to put "NOW" in view
+          el.scrollLeft = (el.scrollWidth - el.clientWidth) * 0.45; 
+        });
+      }, 100);
+    }
+  }, [loading]);
+
   if (loading) {
     return (
       <div style={{ padding: '50px', color: 'white', backgroundColor: '#0b162a', minHeight: '100vh', fontFamily: 'monospace' }}>
-        CALIBRATING 36H TIMELINE...
+        CALIBRATING TIMELINE...
       </div>
     );
   }
 
   const formatXAxis = (tickItem: any, index: number) => {
-    return index % 4 === 0 ? tickItem : '';
+    return index % 2 === 0 ? tickItem : ''; // Show every 2nd hour to keep it clean
   };
 
   return (
     <main style={{ padding: '15px', backgroundColor: '#0b162a', color: 'white', minHeight: '100vh', fontFamily: 'monospace' }}>
       <Link href="/" style={{ color: '#3b82f6', textDecoration: 'none', fontSize: '12px' }}>← DASHBOARD</Link>
       
-      <h2 style={{ fontSize: '18px', margin: '15px 0' }}>VHHH 36-HOUR TREND</h2>
+      <h2 style={{ fontSize: '18px', margin: '15px 0' }}>VHHH 54-HOUR TREND & FORECAST</h2>
 
       <div style={{ display: 'flex', gap: '15px', overflowX: 'auto', paddingBottom: '20px', scrollbarWidth: 'none' }}>
         
         {/* WIND SPEED */}
         <div style={{ minWidth: '340px', flex: '1', background: '#162540', padding: '15px', borderRadius: '8px', border: '1px solid #2a3b5a' }}>
-          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>WIND SPEED (KT)</div>
-          <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data}>
-                <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="time" tickFormatter={formatXAxis} interval={0} fontSize={10} stroke="#556" />
-                <YAxis fontSize={10} stroke="#88a" />
-                <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
-                <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
-                
-                {/* CHANGED TO LINEAR */}
-                <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
-                <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>WIND SPEED (KT) &lt;-- SCROLL --&gt;</div>
+          <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
+            {/* THIS INNER DIV MAKES IT SCROLLABLE */}
+            <div style={{ width: '1200px', height: 250 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data}>
+                  <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="time" tickFormatter={formatXAxis} interval={0} fontSize={10} stroke="#556" />
+                  <YAxis fontSize={10} stroke="#88a" />
+                  <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                  <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
+                  
+                  <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                  <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
 
         {/* WIND DIRECTION */}
         <div style={{ minWidth: '340px', flex: '1', background: '#162540', padding: '15px', borderRadius: '8px', border: '1px solid #2a3b5a' }}>
-          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>WIND DIRECTION (°)</div>
-          <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data}>
-                <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="time" tickFormatter={formatXAxis} interval={0} fontSize={10} stroke="#556" />
-                <YAxis domain={[0, 360]} ticks={[0, 90, 180, 270, 360]} fontSize={10} stroke="#88a" />
-                <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
-                <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} />
-                
-                {/* CHANGED TO LINEAR */}
-                <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
-                <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>WIND DIRECTION (°) &lt;-- SCROLL --&gt;</div>
+          <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
+            <div style={{ width: '1200px', height: 250 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data}>
+                  <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="time" tickFormatter={formatXAxis} interval={0} fontSize={10} stroke="#556" />
+                  <YAxis domain={[0, 360]} ticks={[0, 90, 180, 270, 360]} fontSize={10} stroke="#88a" />
+                  <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                  <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
+                  
+                  <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                  <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
 
         {/* TEMPERATURE */}
         <div style={{ minWidth: '340px', flex: '1', background: '#162540', padding: '15px', borderRadius: '8px', border: '1px solid #2a3b5a' }}>
-          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>TEMP (°C)</div>
-          <div style={{ height: 250 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={data}>
-                <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="time" tickFormatter={formatXAxis} interval={0} fontSize={10} stroke="#556" />
-                <YAxis fontSize={10} stroke="#88a" domain={['auto', 'auto']} />
-                <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
-                <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} />
-                
-                {/* CHANGED TO LINEAR */}
-                <Line type="linear" dataKey="actTemp" stroke="#f87171" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
-                <Line type="stepAfter" dataKey="tafTemp" stroke="#fb923c" name="Forecast (TX)" strokeDasharray="5 5" strokeWidth={2} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>TEMP (°C) &lt;-- SCROLL --&gt;</div>
+          <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
+            <div style={{ width: '1200px', height: 250 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={data}>
+                  <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="time" tickFormatter={formatXAxis} interval={0} fontSize={10} stroke="#556" />
+                  <YAxis fontSize={10} stroke="#88a" domain={['auto', 'auto']} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
+                  <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
+                  
+                  <Line type="linear" dataKey="actTemp" stroke="#f87171" name="Actual" strokeWidth={3} dot={{ r: 2 }} connectNulls />
+                  <Line type="stepAfter" dataKey="tafTemp" stroke="#fb923c" name="Forecast (TX)" strokeDasharray="5 5" strokeWidth={2} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         </div>
       </div>
