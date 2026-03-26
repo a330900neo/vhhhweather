@@ -57,6 +57,8 @@ function formatTafTime(ms: number) {
 
 // --- DATA FETCHING ---
 async function fetchAeroData() {
+  // Run cleanup check in the background
+  fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/cleanup`);
   try {
     const [atisRes, metarRes, tafRes] = await Promise.all([
       fetch('https://atis.cad.gov.hk/ATIS/ATISweb/atis.php'),
