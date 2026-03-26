@@ -35,15 +35,17 @@ export default function HistoryPage() {
   }, []);
 
   useEffect(() => {
-    if (!loading) {
-      setTimeout(() => {
-        const scrollers = document.querySelectorAll('.chart-scroll-container');
-        scrollers.forEach((el: any) => {
-          el.scrollLeft = (el.scrollWidth - el.clientWidth) * 0.45; 
-        });
-      }, 100);
-    }
-  }, [loading]);
+    // Adding a timestamp tricks the browser into thinking it's a brand new URL every second, forcing a fresh download.
+    const timeStamp = new Date().getTime(); 
+    
+    fetch(`/api/history?t=${timeStamp}`, { cache: 'no-store' })
+      .then(res => res.json())
+      .then(json => {
+        setData(json);
+        setLoading(false);
+      })
+      .catch(err => console.error("History fetch error:", err));
+  }, []);
 
   if (loading) {
     return (
