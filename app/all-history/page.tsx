@@ -1,16 +1,20 @@
 import { sql } from '@vercel/postgres';
 import Link from 'next/link';
 
-// Do not cache this page so it always shows the latest database entries
+// Force Next.js to never cache this page
+export const dynamic = 'force-dynamic';
 export const revalidate = 0; 
 
 export default async function AllHistoryPage({
   searchParams,
 }: {
-  searchParams: { page?: string }
+  // Update the type to handle the Promise (Next.js 15 requirement)
+  searchParams: Promise<{ page?: string }> | { page?: string }
 }) {
   // --- PAGINATION LOGIC ---
-  const currentPage = Number(searchParams.page) || 1;
+  // We must AWAIT the searchParams before using them now
+  const params = await searchParams;
+  const currentPage = Number(params?.page) || 1;
   const limit = 100; // Shows 100 rows per page
   const offset = (currentPage - 1) * limit;
 
