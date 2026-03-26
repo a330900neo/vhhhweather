@@ -1,7 +1,10 @@
 import { sql } from '@vercel/postgres';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+
+// ... your existing GET function ...
 
 export async function GET() {
   const { rows } = await sql`SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 600`;
