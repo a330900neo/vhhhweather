@@ -46,6 +46,14 @@ function getActiveRunways(atis: string, type: 'ARRIVALS' | 'DEPARTURES'): string
   return [baseNum];
 }
 
+// FORMAT DATE & TIME HELPER (HKT)
+function formatTafTime(ms: number) {
+  const d = new Date(ms);
+  const day = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Hong_Kong', day: '2-digit' }).format(d);
+  const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Hong_Kong', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+  return `${day}/${time}`;
+}
+
 // --- DATA FETCHING ---
 async function fetchAeroData() {
   try {
@@ -96,11 +104,10 @@ async function fetchAeroData() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       upcomingForecasts = relevantBlocks.slice(0, 4).map((block: any) => {
         const fromTime = typeof block.timeFrom === 'number' ? (block.timeFrom < 10000000000 ? block.timeFrom * 1000 : block.timeFrom) : new Date(block.timeFrom).getTime();
+        const toTime = typeof block.timeTo === 'number' ? (block.timeTo < 10000000000 ? block.timeTo * 1000 : block.timeTo) : new Date(block.timeTo).getTime();
         
-        // Use just the hour to keep it clean (e.g., "14:00")
-        const timeLabel = new Date(fromTime).toLocaleTimeString('en-HK', { 
-          hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Hong_Kong' 
-        }).split(':')[0] + ':00';
+        // Formats as "26/09:00 - 27/15:00"
+        const timeLabel = `${formatTafTime(fromTime)} - ${formatTafTime(toTime)}`;
 
         return {
           dir: block.wdir || 0,
@@ -127,7 +134,7 @@ async function fetchAeroData() {
       atisDep: depAtis, 
       metar: currentMetar, 
       taf: currentTaf,
-      upcomingForecasts // Returning the array!
+      upcomingForecasts
     };
   } catch (e) {
     console.error(e);
@@ -159,10 +166,9 @@ export default async function Page() {
         .compass-container { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; }
         .compass-box { position: relative; width: min(80vw, 300px); height: min(80vw, 300px); border: 1px solid #2a3b5a; border-radius: 50%; margin: 0 auto; flex-shrink: 0; }
         
-        /* New Styles for Multiple TAFs */
         .taf-row-wrapper { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 100vw; overflow: hidden; }
         .taf-scroll-container { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; scrollbar-width: none; max-width: 100%; }
-        .taf-wind-box { background: #162540; padding: 15px; border-radius: 8px; border: 1px solid #2a3b5a; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 90px; flex: 0 0 auto; }
+        .taf-wind-box { background: #162540; padding: 15px; border-radius: 8px; border: 1px solid #2a3b5a; display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 120px; flex: 0 0 auto; }
         
         .info-box { width: 100%; max-width: 500px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
         
@@ -225,7 +231,7 @@ export default async function Page() {
                 </div>
               </div>
 
-              {/* UPDATED: MULTIPLE TAF PREDICT WIDGETS */}
+              {/* UPDATED: MULTIPLE TAF PREDICT WIDGETS WITH FULL TIMES */}
               <div className="taf-row-wrapper">
                 <div style={{ fontSize: '10px', color: '#8b5cf6', fontWeight: 'bold', marginBottom: '10px' }}>UPCOMING TAF SHIFTS</div>
                 <div className="taf-scroll-container">
@@ -240,7 +246,11 @@ export default async function Page() {
 
                       <div style={{ fontSize: '14px', color: '#fff', marginTop: '8px', fontWeight: 'bold' }}>{fcst.dir}°</div>
                       <div style={{ fontSize: '10px', color: '#aaa', marginTop: '2px' }}>{fcst.spd}KT</div>
-                      <div style={{ fontSize: '9px', color: '#88a', marginTop: '8px', background: '#07101e', padding: '3px 5px', borderRadius: '4px', border: '1px solid #162540' }}>FM {fcst.timeLabel}</div>
+                      
+                      {/* UPDATED TIME LABEL HERE */}
+                      <div style={{ fontSize: '9px', color: '#88a', marginTop: '8px', background: '#07101e', padding: '4px 6px', borderRadius: '4px', border: '1px solid #162540', whiteSpace: 'nowrap' }}>
+                        {fcst.timeLabel}
+                      </div>
                     </div>
                   ))}
                   {data.upcomingForecasts.length === 0 && (
