@@ -15,11 +15,12 @@ function parseCloud(text: string) {
 }
 
 function parseMetar(metar: string) {
-  const windMatch = metar.match(/(\d{3})(\d{2})KT/);
+  // UPDATED: Now matches VRB or 3 digits for wind direction
+  const windMatch = metar.match(/(VRB|\d{3})(\d{2})(?:G\d{2})?KT/);
   const visMatch = metar.match(/\b(\d{4}|10KM)\b/);
   const tempMatch = metar.match(/\b(\d{2})\/(\d{2})\b/);
   return {
-    dir: windMatch ? parseInt(windMatch[1]) : 0,
+    dir: windMatch ? (windMatch[1] === 'VRB' ? 'VRB' : parseInt(windMatch[1])) : 0,
     speed: windMatch ? windMatch[2] : "0",
     vis: visMatch ? visMatch[1] : "---",
     temp: tempMatch ? tempMatch[1] : "--",
@@ -81,7 +82,7 @@ async function fetchAeroData() {
     let maxForecastWind = 0;
     
     // EXCTRACT MULTIPLE UPCOMING TAF BLOCKS
-    let upcomingForecasts: { dir: number, spd: number, timeLabel: string }[] = [];
+    let upcomingForecasts: { dir: number | string, spd: number, timeLabel: string }[] = [];
 
     if (tafJson[0]?.fcsts) {
       const now = Date.now();
@@ -109,8 +110,12 @@ async function fetchAeroData() {
         // Formats as "26/09:00 - 27/15:00"
         const timeLabel = `${formatTafTime(fromTime)} - ${formatTafTime(toTime)}`;
 
+        // UPDATED: Handle TAF VRB winds properly
+        const wdirRaw = block.wdir;
+        const dir = (wdirRaw === "VRB" || wdirRaw === 'VRB') ? 'VRB' : (wdirRaw || 0);
+
         return {
-          dir: block.wdir || 0,
+          dir: dir,
           spd: block.wspd || 0,
           timeLabel: timeLabel
         };
@@ -193,7 +198,10 @@ export default async function Page() {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', padding: '0 20px' }}>
           <div>
             <div style={{ fontSize: '10px', color: '#88a' }}>WIND / VIS / TEMP</div>
-            <div style={{ fontSize: '18px', color: '#4ade80' }}>{wx.dir}°/{wx.speed}KT <span style={{color: '#fff'}}>{wx.vis} {wx.temp}°C</span></div>
+            {/* UPDATED: Handle VRB display in top text */}
+            <div style={{ fontSize: '18px', color: '#4ade80' }}>
+              {wx.dir === 'VRB' ? 'VRB' : `${wx.dir}°`}/{wx.speed}KT <span style={{color: '#fff'}}>{wx.vis} {wx.temp}°C</span>
+            </div>
             <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>☁️ {wx.clouds}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -210,10 +218,18 @@ export default async function Page() {
               <div className="compass-box">
                 <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', color: '#555' }}>N</div>
                 
-                <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.dir}deg)`, transition: 'transform 1s' }}>
-                  <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
-                  <div style={{ textAlign: 'center', marginTop: '-35px', fontWeight: 'bold', fontSize: '12px', transform: `rotate(-${wx.dir}deg)` }}>{wx.speed}KT</div>
-                </div>
+                {/* UPDATED: Conditionally render the arrow based on VRB */}
+                {wx.dir !== 'VRB' ? (
+                  <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.dir}deg)`, transition: 'transform 1s' }}>
+                    <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
+                    <div style={{ textAlign: 'center', marginTop: '-35px', fontWeight: 'bold', fontSize: '12px', transform: `rotate(-${wx.dir}deg)` }}>{wx.speed}KT</div>
+                  </div>
+                ) : (
+                  <div style={{ position: 'absolute', top: '22%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                    <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff' }}>VRB</div>
+                    <div style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', marginTop: '2px' }}>{wx.speed}KT</div>
+                  </div>
+                )}
 
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '10px', width: '55%' }}>
                   {runwayConfig.map((rwy) => {
@@ -237,17 +253,24 @@ export default async function Page() {
                 <div className="taf-scroll-container">
                   {data.upcomingForecasts.map((fcst, i) => (
                     <div key={i} className="taf-wind-box">
-                      {/* Mini Compass Arrow */}
-                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', border: '1px solid #2a3b5a', position: 'relative', background: '#0b162a' }}>
-                        <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${fcst.dir}deg)`, transition: 'transform 1s' }}>
-                          <div style={{ width: '0', height: '0', borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '8px solid #8b5cf6', margin: '-4px auto' }} />
-                        </div>
+                      
+                      {/* UPDATED: Mini Compass Arrow conditionally hidden on VRB */}
+                      <div style={{ width: '30px', height: '30px', borderRadius: '50%', border: '1px solid #2a3b5a', position: 'relative', background: '#0b162a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {fcst.dir !== 'VRB' ? (
+                          <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${fcst.dir}deg)`, transition: 'transform 1s' }}>
+                            <div style={{ width: '0', height: '0', borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '8px solid #8b5cf6', margin: '-4px auto' }} />
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: '9px', color: '#8b5cf6', fontWeight: 'bold' }}>VRB</div>
+                        )}
                       </div>
 
-                      <div style={{ fontSize: '14px', color: '#fff', marginTop: '8px', fontWeight: 'bold' }}>{fcst.dir}°</div>
+                      <div style={{ fontSize: '14px', color: '#fff', marginTop: '8px', fontWeight: 'bold' }}>
+                        {fcst.dir === 'VRB' ? 'VRB' : `${fcst.dir}°`}
+                      </div>
+                      
                       <div style={{ fontSize: '10px', color: '#aaa', marginTop: '2px' }}>{fcst.spd}KT</div>
                       
-                      {/* UPDATED TIME LABEL HERE */}
                       <div style={{ fontSize: '9px', color: '#88a', marginTop: '8px', background: '#07101e', padding: '4px 6px', borderRadius: '4px', border: '1px solid #162540', whiteSpace: 'nowrap' }}>
                         {fcst.timeLabel}
                       </div>
