@@ -121,9 +121,12 @@ export default async function Page() {
   const arrRunways = getActiveRunways(data.atisArr, 'ARRIVALS');
   const depRunways = getActiveRunways(data.atisDep, 'DEPARTURES');
   
-  const isOps07 = arrRunways.some(r => r.includes("07")) || 
-                  depRunways.some(r => r.includes("07")) || 
-                  data.atisArr.includes("07");
+  // Check our cleanly parsed arrays for 07, ignoring the raw ATIS to avoid timestamp bugs!
+  const has07 = arrRunways.some(r => r.includes("07")) || depRunways.some(r => r.includes("07"));
+  const has25 = arrRunways.some(r => r.includes("25")) || depRunways.some(r => r.includes("25"));
+  
+  // If it actively detects 25, it's not 07 ops. Otherwise, default to 07.
+  const isOps07 = has07 || !has25;
 
   const runwayConfig = [{ id: "N", l: "07L", r: "25R" }, { id: "C", l: "07C", r: "25C" }, { id: "S", l: "07R", r: "25L" }];
 
@@ -144,7 +147,7 @@ export default async function Page() {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: '10px', color: '#88a' }}>ACTIVE</div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold' }}>RWY {isOps07 ? "07" : "25"}</div>
+          <div style={{ fontSize: '18px', fontWeight: 'bold' }}>RWY {has25 && !has07 ? "25" : "07"}</div>
         </div>
       </div>
 
