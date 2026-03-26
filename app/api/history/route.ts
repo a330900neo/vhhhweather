@@ -6,7 +6,8 @@ export const revalidate = 0;
 export async function GET() {
   const { rows } = await sql`SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 600`;
   
-  // 1. Fetch LIVE structured JSON (Spoof standard browser so AviationWeather doesn't block us)
+  // 1. Fetch LIVE structured JSON for the FUTURE predictions
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let liveTafFcsts: any[] = [];
   try {
     const tafRes = await fetch('https://aviationweather.gov/api/data/taf?ids=VHHH&format=json', { 
@@ -28,9 +29,10 @@ export async function GET() {
   const now = new Date();
   const startTime = new Date(now.getTime() - (24 * 60 * 60 * 1000)); // Start 24 hours ago
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const groups: any = {};
 
-  // 2. Create exact hourly slots (54 hours = 24h past + 30h future TAF predict)
+  // 2. Create exact hourly slots (54 hours = 24h past + 30h future)
   for (let i = 0; i <= 54; i++) {
     const slot = new Date(startTime.getTime() + (i * 60 * 60 * 1000));
     const timeLabel = slot.toLocaleTimeString('en-HK', { 
@@ -51,7 +53,7 @@ export async function GET() {
     };
   }
 
-  // 3. Map DB data into the timeline
+  // 3. Map Actuals (METAR) and DB Logs into the timeline
   rows.forEach(r => {
     const rDate = new Date(r.created_at);
     const timeLabel = rDate.toLocaleTimeString('en-HK', { 
@@ -81,9 +83,37 @@ export async function GET() {
     }
   });
 
-  // 4. Extract TAF Fallback Data
-  const latestTafRow = rows.find(r => r.data_type === 'TAF');
-  let fallbackSpd = 0, fallbackDir = 0, fallbackTemp: number | null = null;
+  // 4. Extract all historical TAFs from DB
+  const allTafs = rows
+    .filter(r => r.data_type === 'TAF')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  // 5. Apply PAST Forecasts (Find the closest DB TAF for each past hour)
+  Object.values(groups).forEach((group: any) => {
+    if (!group.isFuture) {
+      // Find the most recent TAF issued *before* or *during* this specific hour
+      const historicalTaf = allTafs.find(t => new Date(t.created_at).getTime() <= group.timestamp);
+      
+      if (historicalTaf) {
+        const cleanTaf = historicalTaf.raw_text.replace(/\[MAX:.*?\]\s*/, '');
+        const baseWind = cleanTaf.match(/(\d{3})(\d{2,3})(?:G\d{2,3})?KT/);
+        const txMatch = cleanTaf.match(/TX(M?\d{2})\//);
+        
+        if (baseWind) {
+          group.tafDir = parseInt(baseWind[1]);
+          group.tafSpd = parseInt(baseWind[2]);
+        }
+        if (txMatch) {
+          const tStr = txMatch[1];
+          group.tafTemp = tStr.startsWith('M') ? -parseInt(tStr.substring(1)) : parseInt(tStr);
+        }
+      }
+    }
+  });
+
+  // 6. Apply FUTURE Forecasts (Live JSON blocks)
+  const latestTafRow = allTafs[0];
+  let futureBaseSpd = 0, futureBaseDir = 0, futureBaseTemp: number | null = null;
   
   if (latestTafRow) {
     const cleanTaf = latestTafRow.raw_text.replace(/\[MAX:.*?\]\s*/, '');
@@ -91,45 +121,47 @@ export async function GET() {
     const txMatch = cleanTaf.match(/TX(M?\d{2})\//); 
 
     if (baseWind) {
-      fallbackDir = parseInt(baseWind[1]);
-      fallbackSpd = parseInt(baseWind[2]);
+      futureBaseDir = parseInt(baseWind[1]);
+      futureBaseSpd = parseInt(baseWind[2]);
     }
     if (txMatch) {
       const tStr = txMatch[1];
-      fallbackTemp = tStr.startsWith('M') ? -parseInt(tStr.substring(1)) : parseInt(tStr);
+      futureBaseTemp = tStr.startsWith('M') ? -parseInt(tStr.substring(1)) : parseInt(tStr);
     }
-
-    Object.values(groups).forEach((group: any) => {
-      if (!group.tafSpd) group.tafSpd = fallbackSpd;
-      if (!group.tafDir) group.tafDir = fallbackDir;
-      if (!group.tafTemp && fallbackTemp !== null) group.tafTemp = fallbackTemp;
-    });
   }
 
-  // 5. Overwrite flat line with hour-by-hour Future JSON data
-  if (liveTafFcsts.length > 0) {
-    Object.values(groups).forEach((group: any) => {
-      const activeFcsts = liveTafFcsts.filter((fcst: any) => {
-        const fromTime = typeof fcst.timeFrom === 'number' 
-          ? (fcst.timeFrom < 10000000000 ? fcst.timeFrom * 1000 : fcst.timeFrom) 
-          : new Date(fcst.timeFrom).getTime();
-        const toTime = typeof fcst.timeTo === 'number' 
-          ? (fcst.timeTo < 10000000000 ? fcst.timeTo * 1000 : fcst.timeTo) 
-          : new Date(fcst.timeTo).getTime();
-        
-        return group.timestamp >= fromTime && group.timestamp < toTime;
-      });
+  Object.values(groups).forEach((group: any) => {
+    if (group.isFuture) {
+      // Set the baseline first
+      group.tafSpd = futureBaseSpd;
+      group.tafDir = futureBaseDir;
+      group.tafTemp = futureBaseTemp;
 
-      if (activeFcsts.length > 0) {
-        activeFcsts.forEach((fcst: any) => {
-          if (fcst.wspd !== undefined && fcst.wspd !== null) group.tafSpd = fcst.wspd;
-          if (fcst.wdir !== undefined && fcst.wdir !== null) group.tafDir = fcst.wdir;
-          if (fcst.temperature !== undefined && fcst.temperature !== null) group.tafTemp = fcst.temperature;
+      // Overwrite with detailed hour-by-hour JSON bumps
+      if (liveTafFcsts.length > 0) {
+        const activeFcsts = liveTafFcsts.filter((fcst: any) => {
+          const fromTime = typeof fcst.timeFrom === 'number' 
+            ? (fcst.timeFrom < 10000000000 ? fcst.timeFrom * 1000 : fcst.timeFrom) 
+            : new Date(fcst.timeFrom).getTime();
+          const toTime = typeof fcst.timeTo === 'number' 
+            ? (fcst.timeTo < 10000000000 ? fcst.timeTo * 1000 : fcst.timeTo) 
+            : new Date(fcst.timeTo).getTime();
+          
+          return group.timestamp >= fromTime && group.timestamp < toTime;
         });
+
+        if (activeFcsts.length > 0) {
+          activeFcsts.forEach((fcst: any) => {
+            if (fcst.wspd !== undefined && fcst.wspd !== null) group.tafSpd = fcst.wspd;
+            if (fcst.wdir !== undefined && fcst.wdir !== null) group.tafDir = fcst.wdir;
+            if (fcst.temperature !== undefined && fcst.temperature !== null) group.tafTemp = fcst.temperature;
+          });
+        }
       }
-    });
-  }
+    }
+  });
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const formatted = Object.values(groups).sort((a: any, b: any) => a.timestamp - b.timestamp);
   return NextResponse.json(formatted);
 }
