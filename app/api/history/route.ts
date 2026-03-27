@@ -49,20 +49,20 @@ export async function GET() {
       time: `${dayLabel}/${timeLabel}`,
       timestamp: rDate.getTime(),
       isFuture: false,
-      actSpd: null, actDir: null, actTemp: null, 
-      tafSpd: null, tafDir: null, tafTemp: null, 
+      actSpd: null, actDir: null, actGust: null, actTemp: null, 
+      tafSpd: null, tafDir: null, tafGust: null, tafTemp: null, 
       raw: r.raw_text, dataType: r.data_type
     };
 
     if (r.data_type === 'METAR') {
-      // UPDATED: Now safely handles VRB winds
-      const wind = r.raw_text.match(/(VRB|\d{3})(\d{2,3})(?:G\d{2,3})?KT/);
+      // UPDATED: Now captures VRB, Speed, and Gusts
+      const wind = r.raw_text.match(/(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?KT/);
       const tempMatch = r.raw_text.match(/\b(M?\d{2})\/(M?\d{2})\b/); 
 
       if (wind) {
-        // Recharts skips drawing lines on text, so we convert VRB to null to let the line bridge over it
         point.actDir = wind[1] === 'VRB' ? null : parseInt(wind[1]);
         point.actSpd = parseInt(wind[2]);
+        if (wind[3]) point.actGust = parseInt(wind[3]); // Assign actual gust
       }
       if (tempMatch) {
         const tStr = tempMatch[1];
@@ -89,8 +89,8 @@ export async function GET() {
       time: `${dayLabel}/${timeLabel}`, 
       timestamp: fDate.getTime(),
       isFuture: true,
-      actSpd: null, actDir: null, actTemp: null, 
-      tafSpd: null, tafDir: null, tafTemp: null, 
+      actSpd: null, actDir: null, actGust: null, actTemp: null, 
+      tafSpd: null, tafDir: null, tafGust: null, tafTemp: null, 
       raw: null, dataType: null
     });
   }
@@ -104,16 +104,17 @@ export async function GET() {
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const latestTafRow = allTafs[0];
-  let futureBaseSpd = 0, futureBaseDir: number | null = 0, futureBaseTemp: number | null = null;
+  let futureBaseSpd = 0, futureBaseDir: number | null = 0, futureBaseGust: number | null = null, futureBaseTemp: number | null = null;
   
   if (latestTafRow) {
     const cleanTaf = latestTafRow.raw_text.replace(/\[MAX:.*?\]\s*/, '');
-    const baseWind = cleanTaf.match(/(VRB|\d{3})(\d{2,3})(?:G\d{2,3})?KT/);
+    const baseWind = cleanTaf.match(/(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?KT/);
     const txMatch = cleanTaf.match(/TX(M?\d{2})\//); 
 
     if (baseWind) {
       futureBaseDir = baseWind[1] === 'VRB' ? null : parseInt(baseWind[1]);
       futureBaseSpd = parseInt(baseWind[2]);
+      if (baseWind[3]) futureBaseGust = parseInt(baseWind[3]); // Assign future baseline gust
     }
     if (txMatch) {
       const tStr = txMatch[1];
@@ -129,12 +130,13 @@ export async function GET() {
       
       if (historicalTaf) {
         const cleanTaf = historicalTaf.raw_text.replace(/\[MAX:.*?\]\s*/, '');
-        const baseWind = cleanTaf.match(/(VRB|\d{3})(\d{2,3})(?:G\d{2,3})?KT/);
+        const baseWind = cleanTaf.match(/(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?KT/);
         const txMatch = cleanTaf.match(/TX(M?\d{2})\//);
         
         if (baseWind) {
           point.tafDir = baseWind[1] === 'VRB' ? null : parseInt(baseWind[1]);
           point.tafSpd = parseInt(baseWind[2]);
+          if (baseWind[3]) point.tafGust = parseInt(baseWind[3]); // Assign past forecast gust
         }
         if (txMatch) {
           const tStr = txMatch[1];
@@ -145,6 +147,7 @@ export async function GET() {
       // FUTURE Forecasts (Live JSON blocks)
       point.tafSpd = futureBaseSpd;
       point.tafDir = futureBaseDir;
+      point.tafGust = futureBaseGust;
       point.tafTemp = futureBaseTemp;
 
       if (liveTafFcsts.length > 0) {
@@ -158,6 +161,7 @@ export async function GET() {
         if (activeFcsts.length > 0) {
           activeFcsts.forEach((fcst: any) => {
             if (fcst.wspd !== undefined && fcst.wspd !== null) point.tafSpd = fcst.wspd;
+            if (fcst.wgst !== undefined && fcst.wgst !== null) point.tafGust = fcst.wgst; // Extract wgst from JSON
             if (fcst.wdir !== undefined && fcst.wdir !== null) point.tafDir = fcst.wdir === 'VRB' ? null : fcst.wdir;
             if (fcst.temperature !== undefined && fcst.temperature !== null) point.tafTemp = fcst.temperature;
           });
