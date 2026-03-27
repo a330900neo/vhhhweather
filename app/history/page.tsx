@@ -20,8 +20,11 @@ interface AeroHistory {
   raw?: string;
   dataType?: string; 
   isFuture: boolean;
-  actVrb?: boolean; // Flag to indicate Actual VRB
-  tafVrb?: boolean; // Flag to indicate Forecast VRB
+  // Custom VRB Markers
+  actVrbSpd?: number | null;
+  actVrbDir?: number | null;
+  tafVrbSpd?: number | null;
+  tafVrbDir?: number | null;
 }
 
 export default function HistoryPage() {
@@ -57,35 +60,93 @@ export default function HistoryPage() {
 
         const mergedList = Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp);
 
-        // 2. Forward Fill sparse gaps & handle VRB (Unrolling logic removed)
+        // 2. Forward Fill sparse gaps & Apply Continuous Angle unrolling
         let lastActDir: number | null = null;
         let lastTafDir: number | null = null;
+        
+        let actOffset = 0;
+        let prevRawAct: number | null = null;
+        
+        let tafOffset = 0;
+        let prevRawTaf: number | null = null;
 
         mergedList.forEach(p => {
           // --- ACTUAL DIR PROCESSOR ---
           if (typeof p.actDir === 'number') {
             lastActDir = p.actDir;
           } else if (typeof p.actSpd === 'number') {
-            // VRB Detected: Speed exists, but Dir is null. 
-            // Forward-fill to keep line connected, and flag it so we can draw the VRB label!
-            p.actDir = lastActDir !== null ? lastActDir : 180; 
-            p.actVrb = true;
+            // VRB Detected: Speed exists, but Dir doesn't.
+            p.actDir = lastActDir; // Forward fill so line doesn't disconnect!
+            p.actVrbSpd = p.actSpd; // Mark speed for VRB dot
           } else if (!p.isFuture) {
-            // Sparse gap forward-fill
             p.actDir = lastActDir;
+          }
+
+          // Unroll Actual Dir
+          if (typeof p.actDir === 'number') {
+            if (prevRawAct !== null) {
+              const diff = p.actDir - prevRawAct;
+              if (diff > 180) actOffset -= 360;
+              else if (diff < -180) actOffset += 360;
+            }
+            prevRawAct = p.actDir;
+            p.actDir = p.actDir + actOffset;
+
+            // Apply unrolled direction to VRB marker so it aligns visually with the continuous line
+            if (p.actVrbSpd !== undefined) {
+              p.actVrbDir = p.actDir;
+            }
+          } else {
+            prevRawAct = null; 
           }
 
           // --- FORECAST DIR PROCESSOR ---
           if (typeof p.tafDir === 'number') {
             lastTafDir = p.tafDir;
           } else if (typeof p.tafSpd === 'number') {
-            // TAF VRB Detected
-            p.tafDir = lastTafDir !== null ? lastTafDir : 180;
-            p.tafVrb = true;
+            // TAF VRB
+            p.tafDir = lastTafDir; 
+            p.tafVrbSpd = p.tafSpd;
           } else {
             p.tafDir = lastTafDir;
           }
+
+          // Unroll Forecast Dir
+          if (typeof p.tafDir === 'number') {
+            if (prevRawTaf !== null) {
+              const diff = p.tafDir - prevRawTaf;
+              if (diff > 180) tafOffset -= 360;
+              else if (diff < -180) tafOffset += 360;
+            }
+            prevRawTaf = p.tafDir;
+            p.tafDir = p.tafDir + tafOffset;
+
+            if (p.tafVrbSpd !== undefined) {
+              p.tafVrbDir = p.tafDir;
+            }
+          } else {
+            prevRawTaf = null;
+          }
         });
+
+        // 3. Shift all direction data cleanly into the positive [0, 720] plane for the dual-circle display
+        let minD = Infinity;
+        mergedList.forEach(p => {
+           if (typeof p.actDir === 'number' && p.actDir < minD) minD = p.actDir;
+           if (typeof p.tafDir === 'number' && p.tafDir < minD) minD = p.tafDir;
+        });
+
+        if (minD !== Infinity) {
+           let shift = 0;
+           while (minD + shift < 0) shift += 360; // Guarantee values are positive to fit fixed Y-Axis
+           
+           mergedList.forEach(p => {
+              if (typeof p.actDir === 'number') p.actDir += shift;
+              if (typeof p.tafDir === 'number') p.tafDir += shift;
+              if (typeof p.actVrbDir === 'number') p.actVrbDir += shift;
+              if (typeof p.tafVrbDir === 'number') p.tafVrbDir += shift;
+           });
+        }
 
         setChartData(mergedList);
         setLoading(false);
@@ -163,6 +224,10 @@ export default function HistoryPage() {
                   
                   <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls={true} />
                   <Line type="stepAfter" dataKey="tafGust" stroke="#c084fc" name="Forecast Gust" strokeDasharray="3 3" strokeWidth={2} connectNulls={true} />
+
+                  {/* VRB Indicators for Speed */}
+                  <Line type="monotone" dataKey="actVrbSpd" name="Actual VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="tafVrbSpd" name="Forecast VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -179,60 +244,42 @@ export default function HistoryPage() {
                   <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="time" minTickGap={15} fontSize={10} stroke="#556" />
                   
-                  {/* Fixed strict 0-360 boundaries! */}
                   <YAxis 
-                    domain={[0, 360]}
-                    ticks={[0, 90, 180, 270, 360]}
+                    domain={[0, 720]}
+                    ticks={[0, 90, 180, 270, 360, 450, 540, 630, 720]}
+                    tickFormatter={(val) => {
+                     // Renders 0 at bottom, 360 in middle, and 0 at the top
+                     if (val === 360) return "360";
+                     if (val === 0 || val === 720) return "0";
+                     return (val % 360).toString(); 
+                    }} 
                     fontSize={10} 
                     stroke="#88a" 
                   />
                   
                   <Tooltip 
                    contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} 
-                   formatter={(value: any, name: any, props: any) => {
-                     if (name === 'Actual Dir' && props.payload.actVrb) return ['VRB', name];
-                     if (name === 'Forecast Dir' && props.payload.tafVrb) return ['VRB', name];
+                   formatter={(value: any, name: any) => {
                      if (typeof value === 'number' && typeof name === 'string' && name.includes('Dir')) {
-                       return [`${value}°`, name];
+                       let v = Math.round(value) % 360;
+                       if (v < 0) v += 360;
+                       return [`${v === 0 ? 360 : v}°`, name];
+                     }
+                     if (typeof name === 'string' && name.includes('VRB')) {
+                       return ['Variable Wind', name];
                      }
                      return [value, name];
-                   }}
+                    }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line 
-                    type="linear" 
-                    dataKey="actDir" 
-                    stroke="#4ade80" 
-                    name="Actual Dir" 
-                    strokeWidth={3} 
-                    activeDot={{ r: 5 }} 
-                    connectNulls={true} 
-                    dot={(props: any) => {
-                      const { cx, cy, payload } = props;
-                      if (payload.actVrb) {
-                        return <text x={cx} y={cy} dy={-8} textAnchor="middle" fill="#facc15" fontSize="10px" fontWeight="bold">VRB</text>;
-                      }
-                      return <circle cx={cx} cy={cy} r={3} fill="#4ade80" stroke="none" />;
-                    }}
-                  />
-                  <Line 
-                    type="stepAfter" 
-                    dataKey="tafDir" 
-                    stroke="#3b82f6" 
-                    name="Forecast Dir" 
-                    strokeDasharray="5 5" 
-                    strokeWidth={2} 
-                    connectNulls={true} 
-                    dot={(props: any) => {
-                      const { cx, cy, payload } = props;
-                      if (payload.tafVrb) {
-                        return <text x={cx} y={cy} dy={-8} textAnchor="middle" fill="#c084fc" fontSize="10px" fontWeight="bold">VRB</text>;
-                      }
-                      return <circle cx={cx} cy={cy} r={2} fill="#3b82f6" stroke="none" />;
-                    }}
-                  />
+                  <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual Dir" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={true} />
+                  <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast Dir" strokeDasharray="5 5" strokeWidth={2} connectNulls={true} />
+
+                  {/* VRB Indicators for Direction */}
+                  <Line type="monotone" dataKey="actVrbDir" name="Actual VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
+                  <Line type="monotone" dataKey="tafVrbDir" name="Forecast VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
