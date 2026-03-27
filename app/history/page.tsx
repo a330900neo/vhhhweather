@@ -11,10 +11,10 @@ interface AeroHistory {
   timestamp: number;
   actSpd?: number | null;
   actDir?: number | null;
-  actGust?: number | null; // NEW: Actual Gust
+  actGust?: number | null;
   tafSpd?: number | null;
   tafDir?: number | null;
-  tafGust?: number | null; // NEW: Forecast Gust
+  tafGust?: number | null;
   actTemp?: number | null;
   tafTemp?: number | null;
   raw?: string;
@@ -32,33 +32,31 @@ export default function HistoryPage() {
     fetch(`/api/history?t=${timeStamp}`, { cache: 'no-store' })
       .then(res => res.json())
       .then((json: AeroHistory[]) => {
-        // --- DATA PROCESSOR: PREVENT WIND DIRECTION WRAP-AROUND ---
         const processed: AeroHistory[] = [];
         let prevAct: number | null = null;
         let prevTaf: number | null = null;
 
         json.forEach((point) => {
-          // Check if direction jumped by more than 180 degrees
-          const actJump = prevAct !== null && point.actDir !== null && Math.abs(point.actDir - prevAct) > 180;
-          const tafJump = prevTaf !== null && point.tafDir !== null && Math.abs(point.tafDir - prevTaf) > 180;
+          // FIX: Use 'typeof === "number"' to strictly satisfy TypeScript and handle 'undefined'
+          const actJump = typeof prevAct === 'number' && typeof point.actDir === 'number' && Math.abs(point.actDir - prevAct) > 180;
+          const tafJump = typeof prevTaf === 'number' && typeof point.tafDir === 'number' && Math.abs(point.tafDir - prevTaf) > 180;
 
           if (actJump || tafJump) {
-            // Insert a silent "break" point to snap the line
             processed.push({
               ...point,
-              time: point.time + '\u200B', // Zero-width space makes it a unique point on X-axis without messing up text
+              time: point.time + '\u200B', 
               timestamp: point.timestamp - 1, 
               actDir: actJump ? null : point.actDir,
               tafDir: tafJump ? null : point.tafDir,
-              // Null out everything else so we don't accidentally draw dots on other charts
               actSpd: null, tafSpd: null, actGust: null, tafGust: null, actTemp: null, tafTemp: null 
             });
           }
           
           processed.push(point);
           
-          if (point.actDir !== null && point.actDir !== undefined) prevAct = point.actDir;
-          if (point.tafDir !== null && point.tafDir !== undefined) prevTaf = point.tafDir;
+          // FIX: Update previous trackers safely
+          if (typeof point.actDir === 'number') prevAct = point.actDir;
+          if (typeof point.tafDir === 'number') prevTaf = point.tafDir;
         });
 
         setData(processed);
@@ -133,7 +131,6 @@ export default function HistoryPage() {
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
                   <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual Spd" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
-                  {/* NEW GUST LINES */}
                   <Line type="linear" dataKey="actGust" stroke="#facc15" name="Actual Gust" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} connectNulls />
                   
                   <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls />
@@ -158,7 +155,6 @@ export default function HistoryPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  {/* connectNulls={false} is critical here so VRB disconnects the line */}
                   <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
                   <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
                 </LineChart>
