@@ -209,11 +209,13 @@ export default function HistoryPage() {
                   {/* Notice domain is removed so lines can wrap mathematically. We format the ticks to always show 0-360 visually! */}
                   <YAxis 
                     tickFormatter={(val) => {
-                      let v = val % 360;
-                      if (v < 0) v += 360;
-                      return v === 0 ? 360 : v;
+                     let v = val % 360;
+                     if (v < 0) v += 360;
+                     // Add .toString() to satisfy TypeScript's string return requirement
+                     return (v === 0 ? 360 : v).toString(); 
                     }} 
-                    fontSize={10} stroke="#88a" 
+                    fontSize={10} 
+                    stroke="#88a" 
                   />
                   
                   <Tooltip 
