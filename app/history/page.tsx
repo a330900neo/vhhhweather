@@ -25,6 +25,11 @@ interface AeroHistory {
   actVrbDir?: number | null;
   tafVrbSpd?: number | null;
   tafVrbDir?: number | null;
+  // Variable Bounds
+  actVarFrom?: number | null;
+  actVarTo?: number | null;
+  tafVarFrom?: number | null;
+  tafVarTo?: number | null;
 }
 
 export default function HistoryPage() {
@@ -40,6 +45,24 @@ export default function HistoryPage() {
       .then((json: AeroHistory[]) => {
         setLogData(json);
 
+        // Pre-parse the raw METAR string to grab variable bounds if they exist
+        json.forEach(p => {
+          if (p.raw && p.dataType === 'METAR') {
+            const varyMatch = p.raw.match(/\b(\d{3})V(\d{3})\b/);
+            if (varyMatch) {
+              p.actVarFrom = parseInt(varyMatch[1], 10);
+              p.actVarTo = parseInt(varyMatch[2], 10);
+            }
+          }
+          if (p.raw && p.dataType === 'TAF') {
+             const varyMatch = p.raw.match(/\b(\d{3})V(\d{3})\b/);
+             if (varyMatch) {
+               p.tafVarFrom = parseInt(varyMatch[1], 10);
+               p.tafVarTo = parseInt(varyMatch[2], 10);
+             }
+          }
+        });
+
         // 1. Group by time to prevent Recharts from dot-stacking duplicate timestamps
         const grouped: Record<string, AeroHistory> = {};
         json.forEach(p => {
@@ -50,11 +73,15 @@ export default function HistoryPage() {
             if (typeof p.actSpd === 'number') grouped[p.time].actSpd = p.actSpd;
             if (typeof p.actGust === 'number') grouped[p.time].actGust = p.actGust;
             if (typeof p.actTemp === 'number') grouped[p.time].actTemp = p.actTemp;
+            if (typeof p.actVarFrom === 'number') grouped[p.time].actVarFrom = p.actVarFrom;
+            if (typeof p.actVarTo === 'number') grouped[p.time].actVarTo = p.actVarTo;
             
             if (typeof p.tafDir === 'number') grouped[p.time].tafDir = p.tafDir;
             if (typeof p.tafSpd === 'number') grouped[p.time].tafSpd = p.tafSpd;
             if (typeof p.tafGust === 'number') grouped[p.time].tafGust = p.tafGust;
             if (typeof p.tafTemp === 'number') grouped[p.time].tafTemp = p.tafTemp;
+            if (typeof p.tafVarFrom === 'number') grouped[p.time].tafVarFrom = p.tafVarFrom;
+            if (typeof p.tafVarTo === 'number') grouped[p.time].tafVarTo = p.tafVarTo;
           }
         });
 
@@ -75,14 +102,13 @@ export default function HistoryPage() {
           if (typeof p.actDir === 'number') {
             lastActDir = p.actDir;
           } else if (typeof p.actSpd === 'number') {
-            // VRB Detected: Speed exists, but Dir doesn't.
-            p.actDir = lastActDir; // Forward fill so line doesn't disconnect!
-            p.actVrbSpd = p.actSpd; // Mark speed for VRB dot
+            p.actDir = lastActDir; 
+            p.actVrbSpd = p.actSpd; 
           } else if (!p.isFuture) {
             p.actDir = lastActDir;
           }
 
-          // Unroll Actual Dir
+          // Unroll Actual Dir & Bounds
           if (typeof p.actDir === 'number') {
             if (prevRawAct !== null) {
               const diff = p.actDir - prevRawAct;
@@ -92,9 +118,23 @@ export default function HistoryPage() {
             prevRawAct = p.actDir;
             p.actDir = p.actDir + actOffset;
 
-            // Apply unrolled direction to VRB marker so it aligns visually with the continuous line
+            // Align VRB and Variable bounds with the unrolled direction
             if (p.actVrbSpd !== undefined) {
               p.actVrbDir = p.actDir;
+            }
+
+            if (typeof p.actVarFrom === 'number' && typeof p.actVarTo === 'number') {
+              let vFrom = p.actVarFrom + actOffset;
+              let vTo = p.actVarTo + actOffset;
+              
+              // Bind relative to the unrolled actDir so they don't break across 360/0
+              while (vFrom > p.actDir + 180) vFrom -= 360;
+              while (vFrom < p.actDir - 180) vFrom += 360;
+              while (vTo > p.actDir + 180) vTo -= 360;
+              while (vTo < p.actDir - 180) vTo += 360;
+
+              p.actVarFrom = vFrom;
+              p.actVarTo = vTo;
             }
           } else {
             prevRawAct = null; 
@@ -104,14 +144,13 @@ export default function HistoryPage() {
           if (typeof p.tafDir === 'number') {
             lastTafDir = p.tafDir;
           } else if (typeof p.tafSpd === 'number') {
-            // TAF VRB
             p.tafDir = lastTafDir; 
             p.tafVrbSpd = p.tafSpd;
           } else {
             p.tafDir = lastTafDir;
           }
 
-          // Unroll Forecast Dir
+          // Unroll Forecast Dir & Bounds
           if (typeof p.tafDir === 'number') {
             if (prevRawTaf !== null) {
               const diff = p.tafDir - prevRawTaf;
@@ -124,27 +163,46 @@ export default function HistoryPage() {
             if (p.tafVrbSpd !== undefined) {
               p.tafVrbDir = p.tafDir;
             }
+            
+            if (typeof p.tafVarFrom === 'number' && typeof p.tafVarTo === 'number') {
+              let vFrom = p.tafVarFrom + tafOffset;
+              let vTo = p.tafVarTo + tafOffset;
+              
+              while (vFrom > p.tafDir + 180) vFrom -= 360;
+              while (vFrom < p.tafDir - 180) vFrom += 360;
+              while (vTo > p.tafDir + 180) vTo -= 360;
+              while (vTo < p.tafDir - 180) vTo += 360;
+
+              p.tafVarFrom = vFrom;
+              p.tafVarTo = vTo;
+            }
           } else {
             prevRawTaf = null;
           }
         });
 
-        // 3. Shift all direction data cleanly into the positive [0, 720] plane for the dual-circle display
+        // 3. Shift all direction data cleanly into the positive [0, 720] plane
         let minD = Infinity;
         mergedList.forEach(p => {
            if (typeof p.actDir === 'number' && p.actDir < minD) minD = p.actDir;
            if (typeof p.tafDir === 'number' && p.tafDir < minD) minD = p.tafDir;
+           if (typeof p.actVarFrom === 'number' && p.actVarFrom < minD) minD = p.actVarFrom;
+           if (typeof p.tafVarFrom === 'number' && p.tafVarFrom < minD) minD = p.tafVarFrom;
         });
 
         if (minD !== Infinity) {
            let shift = 0;
-           while (minD + shift < 0) shift += 360; // Guarantee values are positive to fit fixed Y-Axis
+           while (minD + shift < 0) shift += 360; 
            
            mergedList.forEach(p => {
               if (typeof p.actDir === 'number') p.actDir += shift;
               if (typeof p.tafDir === 'number') p.tafDir += shift;
               if (typeof p.actVrbDir === 'number') p.actVrbDir += shift;
               if (typeof p.tafVrbDir === 'number') p.tafVrbDir += shift;
+              if (typeof p.actVarFrom === 'number') p.actVarFrom += shift;
+              if (typeof p.actVarTo === 'number') p.actVarTo += shift;
+              if (typeof p.tafVarFrom === 'number') p.tafVarFrom += shift;
+              if (typeof p.tafVarTo === 'number') p.tafVarTo += shift;
            });
         }
 
@@ -225,7 +283,6 @@ export default function HistoryPage() {
                   <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls={true} />
                   <Line type="stepAfter" dataKey="tafGust" stroke="#c084fc" name="Forecast Gust" strokeDasharray="3 3" strokeWidth={2} connectNulls={true} />
 
-                  {/* VRB Indicators for Speed */}
                   <Line type="monotone" dataKey="actVrbSpd" name="Actual VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
                   <Line type="monotone" dataKey="tafVrbSpd" name="Forecast VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
                 </LineChart>
@@ -248,7 +305,6 @@ export default function HistoryPage() {
                     domain={[0, 720]}
                     ticks={[0, 90, 180, 270, 360, 450, 540, 630, 720]}
                     tickFormatter={(val) => {
-                     // Renders 0 at bottom, 360 in middle, and 0 at the top
                      if (val === 360) return "360";
                      if (val === 0 || val === 720) return "0";
                      return (val % 360).toString(); 
@@ -260,7 +316,7 @@ export default function HistoryPage() {
                   <Tooltip 
                    contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} 
                    formatter={(value: any, name: any) => {
-                     if (typeof value === 'number' && typeof name === 'string' && name.includes('Dir')) {
+                     if (typeof value === 'number' && typeof name === 'string' && (name.includes('Dir') || name.includes('Var'))) {
                        let v = Math.round(value) % 360;
                        if (v < 0) v += 360;
                        return [`${v === 0 ? 360 : v}°`, name];
@@ -274,10 +330,15 @@ export default function HistoryPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
+                  {/* Variable Bounds Layered Behind Main Lines */}
+                  <Line type="monotone" dataKey="actVarFrom" stroke="#93c5fd" name="Act Var Min" strokeDasharray="4 4" dot={false} strokeWidth={1.5} connectNulls={false} />
+                  <Line type="monotone" dataKey="actVarTo" stroke="#93c5fd" name="Act Var Max" strokeDasharray="4 4" dot={false} strokeWidth={1.5} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="tafVarFrom" stroke="#a78bfa" name="Taf Var Min" strokeDasharray="4 4" dot={false} strokeWidth={1.5} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="tafVarTo" stroke="#a78bfa" name="Taf Var Max" strokeDasharray="4 4" dot={false} strokeWidth={1.5} connectNulls={false} />
+
                   <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual Dir" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={true} />
                   <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast Dir" strokeDasharray="5 5" strokeWidth={2} connectNulls={true} />
 
-                  {/* VRB Indicators for Direction */}
                   <Line type="monotone" dataKey="actVrbDir" name="Actual VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
                   <Line type="monotone" dataKey="tafVrbDir" name="Forecast VRB" stroke="none" dot={{ r: 5, stroke: '#ef4444', strokeWidth: 2, fill: '#0b162a' }} isAnimationActive={false} connectNulls={false} />
                 </LineChart>
