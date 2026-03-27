@@ -20,6 +20,8 @@ interface AeroHistory {
   raw?: string;
   dataType?: string; 
   isFuture: boolean;
+  actVrb?: boolean; // Flag to indicate Actual VRB
+  tafVrb?: boolean; // Flag to indicate Forecast VRB
 }
 
 export default function HistoryPage() {
@@ -33,7 +35,7 @@ export default function HistoryPage() {
     fetch(`/api/history?t=${timeStamp}`, { cache: 'no-store' })
       .then(res => res.json())
       .then((json: AeroHistory[]) => {
-        setLogData(json); // Save original raw data for the table
+        setLogData(json);
 
         // 1. Group by time to prevent Recharts from dot-stacking duplicate timestamps
         const grouped: Record<string, AeroHistory> = {};
@@ -41,7 +43,6 @@ export default function HistoryPage() {
           if (!grouped[p.time]) {
             grouped[p.time] = { ...p };
           } else {
-            // Merge properties so we don't have sparse gaps at the exact same minute
             if (typeof p.actDir === 'number') grouped[p.time].actDir = p.actDir;
             if (typeof p.actSpd === 'number') grouped[p.time].actSpd = p.actSpd;
             if (typeof p.actGust === 'number') grouped[p.time].actGust = p.actGust;
@@ -56,61 +57,33 @@ export default function HistoryPage() {
 
         const mergedList = Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp);
 
-        // 2. Forward Fill sparse gaps & Apply Continuous Angle unrolling
+        // 2. Forward Fill sparse gaps & handle VRB (Unrolling logic removed)
         let lastActDir: number | null = null;
         let lastTafDir: number | null = null;
-        
-        let actOffset = 0;
-        let prevRawAct: number | null = null;
-        
-        let tafOffset = 0;
-        let prevRawTaf: number | null = null;
 
         mergedList.forEach(p => {
           // --- ACTUAL DIR PROCESSOR ---
           if (typeof p.actDir === 'number') {
             lastActDir = p.actDir;
           } else if (typeof p.actSpd === 'number') {
-            // VRB Deteced: Speed exists, but Dir is null. This forces the line to disconnect!
-            lastActDir = null; 
+            // VRB Detected: Speed exists, but Dir is null. 
+            // Forward-fill to keep line connected, and flag it so we can draw the VRB label!
+            p.actDir = lastActDir !== null ? lastActDir : 180; 
+            p.actVrb = true;
           } else if (!p.isFuture) {
-            // Sparse gap from a TAF update in the past. Forward-fill to keep line connected!
+            // Sparse gap forward-fill
             p.actDir = lastActDir;
-          }
-
-          // Unroll Actual Dir so 350 -> 10 draws beautifully instead of crisscrossing
-          if (typeof p.actDir === 'number') {
-            if (prevRawAct !== null) {
-              const diff = p.actDir - prevRawAct;
-              if (diff > 180) actOffset -= 360;
-              else if (diff < -180) actOffset += 360;
-            }
-            prevRawAct = p.actDir;
-            p.actDir = p.actDir + actOffset;
-          } else {
-            prevRawAct = null; // Reset anchor if VRB breaks the line
           }
 
           // --- FORECAST DIR PROCESSOR ---
           if (typeof p.tafDir === 'number') {
             lastTafDir = p.tafDir;
           } else if (typeof p.tafSpd === 'number') {
-            lastTafDir = null; // TAF VRB
+            // TAF VRB Detected
+            p.tafDir = lastTafDir !== null ? lastTafDir : 180;
+            p.tafVrb = true;
           } else {
             p.tafDir = lastTafDir;
-          }
-
-          // Unroll Forecast Dir
-          if (typeof p.tafDir === 'number') {
-            if (prevRawTaf !== null) {
-              const diff = p.tafDir - prevRawTaf;
-              if (diff > 180) tafOffset -= 360;
-              else if (diff < -180) tafOffset += 360;
-            }
-            prevRawTaf = p.tafDir;
-            p.tafDir = p.tafDir + tafOffset;
-          } else {
-            prevRawTaf = null;
           }
         });
 
@@ -185,11 +158,11 @@ export default function HistoryPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual Spd" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
-                  <Line type="linear" dataKey="actGust" stroke="#facc15" name="Actual Gust" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} connectNulls={false} />
+                  <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual Spd" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={true} />
+                  <Line type="linear" dataKey="actGust" stroke="#facc15" name="Actual Gust" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} connectNulls={true} />
                   
-                  <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
-                  <Line type="stepAfter" dataKey="tafGust" stroke="#c084fc" name="Forecast Gust" strokeDasharray="3 3" strokeWidth={2} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls={true} />
+                  <Line type="stepAfter" dataKey="tafGust" stroke="#c084fc" name="Forecast Gust" strokeDasharray="3 3" strokeWidth={2} connectNulls={true} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -206,35 +179,60 @@ export default function HistoryPage() {
                   <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="time" minTickGap={15} fontSize={10} stroke="#556" />
                   
-                  {/* Notice domain is removed so lines can wrap mathematically. We format the ticks to always show 0-360 visually! */}
+                  {/* Fixed strict 0-360 boundaries! */}
                   <YAxis 
-                    tickFormatter={(val) => {
-                     let v = val % 360;
-                     if (v < 0) v += 360;
-                     // Add .toString() to satisfy TypeScript's string return requirement
-                     return (v === 0 ? 360 : v).toString(); 
-                    }} 
+                    domain={[0, 360]}
+                    ticks={[0, 90, 180, 270, 360]}
                     fontSize={10} 
                     stroke="#88a" 
                   />
                   
                   <Tooltip 
                    contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} 
-                   formatter={(value: any, name: any) => {
-                     // Ensure tooltip always shows standard aviation degrees
+                   formatter={(value: any, name: any, props: any) => {
+                     if (name === 'Actual Dir' && props.payload.actVrb) return ['VRB', name];
+                     if (name === 'Forecast Dir' && props.payload.tafVrb) return ['VRB', name];
                      if (typeof value === 'number' && typeof name === 'string' && name.includes('Dir')) {
-                       let v = Math.round(value) % 360;
-                       if (v < 0) v += 360;
-                       return [`${v === 0 ? 360 : v}°`, name];
+                       return [`${value}°`, name];
                      }
                      return [value, name];
-                    }}
+                   }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual Dir" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
-                  <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast Dir" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
+                  <Line 
+                    type="linear" 
+                    dataKey="actDir" 
+                    stroke="#4ade80" 
+                    name="Actual Dir" 
+                    strokeWidth={3} 
+                    activeDot={{ r: 5 }} 
+                    connectNulls={true} 
+                    dot={(props: any) => {
+                      const { cx, cy, payload } = props;
+                      if (payload.actVrb) {
+                        return <text x={cx} y={cy} dy={-8} textAnchor="middle" fill="#facc15" fontSize="10px" fontWeight="bold">VRB</text>;
+                      }
+                      return <circle cx={cx} cy={cy} r={3} fill="#4ade80" stroke="none" />;
+                    }}
+                  />
+                  <Line 
+                    type="stepAfter" 
+                    dataKey="tafDir" 
+                    stroke="#3b82f6" 
+                    name="Forecast Dir" 
+                    strokeDasharray="5 5" 
+                    strokeWidth={2} 
+                    connectNulls={true} 
+                    dot={(props: any) => {
+                      const { cx, cy, payload } = props;
+                      if (payload.tafVrb) {
+                        return <text x={cx} y={cy} dy={-8} textAnchor="middle" fill="#c084fc" fontSize="10px" fontWeight="bold">VRB</text>;
+                      }
+                      return <circle cx={cx} cy={cy} r={2} fill="#3b82f6" stroke="none" />;
+                    }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -255,8 +253,8 @@ export default function HistoryPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actTemp" stroke="#f87171" name="Actual Temp" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
-                  <Line type="stepAfter" dataKey="tafTemp" stroke="#fb923c" name="Forecast Temp" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
+                  <Line type="linear" dataKey="actTemp" stroke="#f87171" name="Actual Temp" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={true} />
+                  <Line type="stepAfter" dataKey="tafTemp" stroke="#fb923c" name="Forecast Temp" strokeDasharray="5 5" strokeWidth={2} connectNulls={true} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -276,7 +274,6 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {/* Note: We map logData here so the table still shows EVERY row untouched! */}
             {[...logData].filter(d => d.raw).reverse().slice(0, 10).map((row, i) => {
               let typeColor = '#3b82f6';
               if (row.dataType === 'METAR') typeColor = '#4ade80'; 
