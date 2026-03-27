@@ -90,94 +90,82 @@ export default function HistoryPage() {
         // 2. Forward Fill sparse gaps & Apply Continuous Angle unrolling
         let lastActDir: number | null = null;
         let lastTafDir: number | null = null;
-        
-        let actOffset = 0;
-        let prevRawAct: number | null = null;
-        
-        let tafOffset = 0;
-        let prevRawTaf: number | null = null;
 
         mergedList.forEach(p => {
           // --- ACTUAL DIR PROCESSOR ---
           if (typeof p.actDir === 'number') {
-            lastActDir = p.actDir;
+            let unrolledAct = p.actDir % 360;
+            if (unrolledAct < 0) unrolledAct += 360;
+            
+            // Keep actual line continuous
+            if (lastActDir !== null) {
+                while (unrolledAct > lastActDir + 180) unrolledAct -= 360;
+                while (unrolledAct < lastActDir - 180) unrolledAct += 360;
+            }
+            p.actDir = unrolledAct;
+            lastActDir = unrolledAct;
+
+            if (p.actVrbSpd !== undefined) p.actVrbDir = p.actDir;
+
+            if (typeof p.actVarFrom === 'number' && typeof p.actVarTo === 'number') {
+                let vFrom = p.actVarFrom % 360; if (vFrom < 0) vFrom += 360;
+                let vTo = p.actVarTo % 360; if (vTo < 0) vTo += 360;
+
+                while (vFrom > p.actDir + 180) vFrom -= 360;
+                while (vFrom < p.actDir - 180) vFrom += 360;
+                while (vTo > p.actDir + 180) vTo -= 360;
+                while (vTo < p.actDir - 180) vTo += 360;
+
+                p.actVarFrom = vFrom;
+                p.actVarTo = vTo;
+            }
           } else if (typeof p.actSpd === 'number') {
-            p.actDir = lastActDir; 
-            p.actVrbSpd = p.actSpd; 
+            p.actDir = lastActDir;
+            p.actVrbSpd = p.actSpd;
+            if (p.actDir !== null) p.actVrbDir = p.actDir;
           } else if (!p.isFuture) {
             p.actDir = lastActDir;
           }
 
-          // Unroll Actual Dir & Bounds
-          if (typeof p.actDir === 'number') {
-            if (prevRawAct !== null) {
-              const diff = p.actDir - prevRawAct;
-              if (diff > 180) actOffset -= 360;
-              else if (diff < -180) actOffset += 360;
-            }
-            prevRawAct = p.actDir;
-            p.actDir = p.actDir + actOffset;
-
-            // Align VRB and Variable bounds with the unrolled direction
-            if (p.actVrbSpd !== undefined) {
-              p.actVrbDir = p.actDir;
-            }
-
-            if (typeof p.actVarFrom === 'number' && typeof p.actVarTo === 'number') {
-              let vFrom = p.actVarFrom + actOffset;
-              let vTo = p.actVarTo + actOffset;
-              
-              // Bind relative to the unrolled actDir so they don't break across 360/0
-              while (vFrom > p.actDir + 180) vFrom -= 360;
-              while (vFrom < p.actDir - 180) vFrom += 360;
-              while (vTo > p.actDir + 180) vTo -= 360;
-              while (vTo < p.actDir - 180) vTo += 360;
-
-              p.actVarFrom = vFrom;
-              p.actVarTo = vTo;
-            }
-          } else {
-            prevRawAct = null; 
-          }
-
           // --- FORECAST DIR PROCESSOR ---
           if (typeof p.tafDir === 'number') {
-            lastTafDir = p.tafDir;
+            // Priority reference: 1) Match current Actual Dir, 2) Keep continuous Forecast, 3) Catch onto last Actual
+            let refDir = p.tafDir;
+            if (typeof p.actDir === 'number') refDir = p.actDir;
+            else if (lastTafDir !== null) refDir = lastTafDir;
+            else if (lastActDir !== null) refDir = lastActDir;
+
+            let unrolledTaf = p.tafDir % 360;
+            if (unrolledTaf < 0) unrolledTaf += 360;
+
+            if (refDir !== null) {
+                while (unrolledTaf > refDir + 180) unrolledTaf -= 360;
+                while (unrolledTaf < refDir - 180) unrolledTaf += 360;
+            }
+
+            p.tafDir = unrolledTaf;
+            lastTafDir = unrolledTaf;
+
+            if (p.tafVrbSpd !== undefined) p.tafVrbDir = p.tafDir;
+
+            if (typeof p.tafVarFrom === 'number' && typeof p.tafVarTo === 'number') {
+                let vFrom = p.tafVarFrom % 360; if (vFrom < 0) vFrom += 360;
+                let vTo = p.tafVarTo % 360; if (vTo < 0) vTo += 360;
+
+                while (vFrom > p.tafDir + 180) vFrom -= 360;
+                while (vFrom < p.tafDir - 180) vFrom += 360;
+                while (vTo > p.tafDir + 180) vTo -= 360;
+                while (vTo < p.tafDir - 180) vTo += 360;
+
+                p.tafVarFrom = vFrom;
+                p.tafVarTo = vTo;
+            }
           } else if (typeof p.tafSpd === 'number') {
-            p.tafDir = lastTafDir; 
+            p.tafDir = lastTafDir;
             p.tafVrbSpd = p.tafSpd;
+            if (p.tafDir !== null) p.tafVrbDir = p.tafDir;
           } else {
             p.tafDir = lastTafDir;
-          }
-
-          // Unroll Forecast Dir & Bounds
-          if (typeof p.tafDir === 'number') {
-            if (prevRawTaf !== null) {
-              const diff = p.tafDir - prevRawTaf;
-              if (diff > 180) tafOffset -= 360;
-              else if (diff < -180) tafOffset += 360;
-            }
-            prevRawTaf = p.tafDir;
-            p.tafDir = p.tafDir + tafOffset;
-
-            if (p.tafVrbSpd !== undefined) {
-              p.tafVrbDir = p.tafDir;
-            }
-            
-            if (typeof p.tafVarFrom === 'number' && typeof p.tafVarTo === 'number') {
-              let vFrom = p.tafVarFrom + tafOffset;
-              let vTo = p.tafVarTo + tafOffset;
-              
-              while (vFrom > p.tafDir + 180) vFrom -= 360;
-              while (vFrom < p.tafDir - 180) vFrom += 360;
-              while (vTo > p.tafDir + 180) vTo -= 360;
-              while (vTo < p.tafDir - 180) vTo += 360;
-
-              p.tafVarFrom = vFrom;
-              p.tafVarTo = vTo;
-            }
-          } else {
-            prevRawTaf = null;
           }
         });
 
