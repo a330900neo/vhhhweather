@@ -23,7 +23,8 @@ interface AeroHistory {
 }
 
 export default function HistoryPage() {
-  const [data, setData] = useState<AeroHistory[]>([]);
+  const [chartData, setChartData] = useState<AeroHistory[]>([]);
+  const [logData, setLogData] = useState<AeroHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,34 +33,88 @@ export default function HistoryPage() {
     fetch(`/api/history?t=${timeStamp}`, { cache: 'no-store' })
       .then(res => res.json())
       .then((json: AeroHistory[]) => {
-        const processed: AeroHistory[] = [];
-        let prevAct: number | null = null;
-        let prevTaf: number | null = null;
+        setLogData(json); // Save original raw data for the table
 
-        json.forEach((point) => {
-          // FIX: Use 'typeof === "number"' to strictly satisfy TypeScript and handle 'undefined'
-          const actJump = typeof prevAct === 'number' && typeof point.actDir === 'number' && Math.abs(point.actDir - prevAct) > 180;
-          const tafJump = typeof prevTaf === 'number' && typeof point.tafDir === 'number' && Math.abs(point.tafDir - prevTaf) > 180;
-
-          if (actJump || tafJump) {
-            processed.push({
-              ...point,
-              time: point.time + '\u200B', 
-              timestamp: point.timestamp - 1, 
-              actDir: actJump ? null : point.actDir,
-              tafDir: tafJump ? null : point.tafDir,
-              actSpd: null, tafSpd: null, actGust: null, tafGust: null, actTemp: null, tafTemp: null 
-            });
+        // 1. Group by time to prevent Recharts from dot-stacking duplicate timestamps
+        const grouped: Record<string, AeroHistory> = {};
+        json.forEach(p => {
+          if (!grouped[p.time]) {
+            grouped[p.time] = { ...p };
+          } else {
+            // Merge properties so we don't have sparse gaps at the exact same minute
+            if (typeof p.actDir === 'number') grouped[p.time].actDir = p.actDir;
+            if (typeof p.actSpd === 'number') grouped[p.time].actSpd = p.actSpd;
+            if (typeof p.actGust === 'number') grouped[p.time].actGust = p.actGust;
+            if (typeof p.actTemp === 'number') grouped[p.time].actTemp = p.actTemp;
+            
+            if (typeof p.tafDir === 'number') grouped[p.time].tafDir = p.tafDir;
+            if (typeof p.tafSpd === 'number') grouped[p.time].tafSpd = p.tafSpd;
+            if (typeof p.tafGust === 'number') grouped[p.time].tafGust = p.tafGust;
+            if (typeof p.tafTemp === 'number') grouped[p.time].tafTemp = p.tafTemp;
           }
-          
-          processed.push(point);
-          
-          // FIX: Update previous trackers safely
-          if (typeof point.actDir === 'number') prevAct = point.actDir;
-          if (typeof point.tafDir === 'number') prevTaf = point.tafDir;
         });
 
-        setData(processed);
+        const mergedList = Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp);
+
+        // 2. Forward Fill sparse gaps & Apply Continuous Angle unrolling
+        let lastActDir: number | null = null;
+        let lastTafDir: number | null = null;
+        
+        let actOffset = 0;
+        let prevRawAct: number | null = null;
+        
+        let tafOffset = 0;
+        let prevRawTaf: number | null = null;
+
+        mergedList.forEach(p => {
+          // --- ACTUAL DIR PROCESSOR ---
+          if (typeof p.actDir === 'number') {
+            lastActDir = p.actDir;
+          } else if (typeof p.actSpd === 'number') {
+            // VRB Deteced: Speed exists, but Dir is null. This forces the line to disconnect!
+            lastActDir = null; 
+          } else if (!p.isFuture) {
+            // Sparse gap from a TAF update in the past. Forward-fill to keep line connected!
+            p.actDir = lastActDir;
+          }
+
+          // Unroll Actual Dir so 350 -> 10 draws beautifully instead of crisscrossing
+          if (typeof p.actDir === 'number') {
+            if (prevRawAct !== null) {
+              const diff = p.actDir - prevRawAct;
+              if (diff > 180) actOffset -= 360;
+              else if (diff < -180) actOffset += 360;
+            }
+            prevRawAct = p.actDir;
+            p.actDir = p.actDir + actOffset;
+          } else {
+            prevRawAct = null; // Reset anchor if VRB breaks the line
+          }
+
+          // --- FORECAST DIR PROCESSOR ---
+          if (typeof p.tafDir === 'number') {
+            lastTafDir = p.tafDir;
+          } else if (typeof p.tafSpd === 'number') {
+            lastTafDir = null; // TAF VRB
+          } else {
+            p.tafDir = lastTafDir;
+          }
+
+          // Unroll Forecast Dir
+          if (typeof p.tafDir === 'number') {
+            if (prevRawTaf !== null) {
+              const diff = p.tafDir - prevRawTaf;
+              if (diff > 180) tafOffset -= 360;
+              else if (diff < -180) tafOffset += 360;
+            }
+            prevRawTaf = p.tafDir;
+            p.tafDir = p.tafDir + tafOffset;
+          } else {
+            prevRawTaf = null;
+          }
+        });
+
+        setChartData(mergedList);
         setLoading(false);
       })
       .catch(err => console.error("History fetch error:", err));
@@ -89,7 +144,7 @@ export default function HistoryPage() {
   const hkDay = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Hong_Kong', day: '2-digit' }).format(nowD);
   
   let currentHourLabel = `${hkHour}:00`;
-  if (data.length > 0 && data[0].time && data[0].time.includes('/')) {
+  if (chartData.length > 0 && chartData[0].time && chartData[0].time.includes('/')) {
     currentHourLabel = `${hkDay}/${hkHour}:00`;
   }
 
@@ -122,7 +177,7 @@ export default function HistoryPage() {
           <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
             <div style={{ width: '3600px', height: 250 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
+                <LineChart data={chartData}>
                   <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="time" minTickGap={15} fontSize={10} stroke="#556" />
                   <YAxis fontSize={10} stroke="#88a" />
@@ -130,11 +185,11 @@ export default function HistoryPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual Spd" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
-                  <Line type="linear" dataKey="actGust" stroke="#facc15" name="Actual Gust" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} connectNulls />
+                  <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual Spd" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
+                  <Line type="linear" dataKey="actGust" stroke="#facc15" name="Actual Gust" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} connectNulls={false} />
                   
-                  <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls />
-                  <Line type="stepAfter" dataKey="tafGust" stroke="#c084fc" name="Forecast Gust" strokeDasharray="3 3" strokeWidth={2} connectNulls />
+                  <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="tafGust" stroke="#c084fc" name="Forecast Gust" strokeDasharray="3 3" strokeWidth={2} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -147,16 +202,37 @@ export default function HistoryPage() {
           <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
             <div style={{ width: '3600px', height: 250 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
+                <LineChart data={chartData}>
                   <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="time" minTickGap={15} fontSize={10} stroke="#556" />
-                  <YAxis domain={[0, 360]} ticks={[0, 90, 180, 270, 360]} fontSize={10} stroke="#88a" />
-                  <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
+                  
+                  {/* Notice domain is removed so lines can wrap mathematically. We format the ticks to always show 0-360 visually! */}
+                  <YAxis 
+                    tickFormatter={(val) => {
+                      let v = val % 360;
+                      if (v < 0) v += 360;
+                      return v === 0 ? 360 : v;
+                    }} 
+                    fontSize={10} stroke="#88a" 
+                  />
+                  
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} 
+                    formatter={(value: any, name: string) => {
+                      // Ensure tooltip always shows standard aviation degrees
+                      if (typeof value === 'number' && name.includes('Dir')) {
+                        let v = Math.round(value) % 360;
+                        if (v < 0) v += 360;
+                        return [`${v === 0 ? 360 : v}°`, name];
+                      }
+                      return [value, name];
+                    }}
+                  />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
-                  <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
+                  <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual Dir" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast Dir" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -169,7 +245,7 @@ export default function HistoryPage() {
           <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
             <div style={{ width: '3600px', height: 250 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data}>
+                <LineChart data={chartData}>
                   <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="time" minTickGap={15} fontSize={10} stroke="#556" />
                   <YAxis fontSize={10} stroke="#88a" domain={['auto', 'auto']} />
@@ -177,8 +253,8 @@ export default function HistoryPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actTemp" stroke="#f87171" name="Actual" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
-                  <Line type="stepAfter" dataKey="tafTemp" stroke="#fb923c" name="Forecast (TX)" strokeDasharray="5 5" strokeWidth={2} connectNulls />
+                  <Line type="linear" dataKey="actTemp" stroke="#f87171" name="Actual Temp" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="tafTemp" stroke="#fb923c" name="Forecast Temp" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -198,14 +274,15 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {[...data].filter(d => d.raw).reverse().slice(0, 10).map((row, i) => {
+            {/* Note: We map logData here so the table still shows EVERY row untouched! */}
+            {[...logData].filter(d => d.raw).reverse().slice(0, 10).map((row, i) => {
               let typeColor = '#3b82f6';
               if (row.dataType === 'METAR') typeColor = '#4ade80'; 
               if (row.dataType?.includes('ATIS')) typeColor = '#f59e0b'; 
 
               return (
                 <tr key={i} style={{ borderBottom: '1px solid #162540' }}>
-                  <td style={{ padding: '12px', color: '#88a', whiteSpace: 'nowrap' }}>{row.time.replace('\u200B', '')}</td>
+                  <td style={{ padding: '12px', color: '#88a', whiteSpace: 'nowrap' }}>{row.time}</td>
                   <td style={{ color: typeColor, fontWeight: 'bold', whiteSpace: 'nowrap', paddingRight: '10px' }}>
                       {row.dataType || 'UNKNOWN'}
                   </td>
