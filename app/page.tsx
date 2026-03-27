@@ -15,9 +15,7 @@ function parseCloud(text: string) {
 }
 
 function parseMetar(metar: string) {
-  // Extract Speed, Direction, and Gusts
   const windMatch = metar.match(/(VRB|\d{3})(\d{2})(?:G(\d{2}))?KT/);
-  // Extract Variable Wind Bounds (e.g. 060V180)
   const varyMatch = metar.match(/\b(\d{3})V(\d{3})\b/);
   const visMatch = metar.match(/\b(\d{4}|10KM)\b/);
   const tempMatch = metar.match(/\b(\d{2})\/(\d{2})\b/);
@@ -201,9 +199,15 @@ export default async function Page() {
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', padding: '0 20px' }}>
           <div>
             <div style={{ fontSize: '10px', color: '#88a' }}>WIND / VIS / TEMP</div>
+            
+            {/* UPDATED: Dynamic Wind String including VRB, V bounds, and Gusts */}
             <div style={{ fontSize: '18px', color: '#4ade80' }}>
-              {wx.dir === 'VRB' ? 'VRB' : `${wx.dir}°`}/{wx.speed}KT {wx.gust > 0 && <span style={{color: '#facc15'}}>G{wx.gust}KT</span>} <span style={{color: '#fff'}}>{wx.vis} {wx.temp}°C</span>
+              {wx.dir === 'VRB' ? 'VRB' : `${wx.dir.toString().padStart(3, '0')}°`}
+              {wx.varFrom !== null && wx.varTo !== null ? <span style={{color: '#93c5fd'}}>V{wx.varTo.toString().padStart(3, '0')}°</span> : ''}
+              /{wx.speed}KT {wx.gust > 0 && <span style={{color: '#facc15'}}>G{wx.gust}KT</span>} 
+              <span style={{color: '#fff'}}> {wx.vis} {wx.temp}°C</span>
             </div>
+            
             <div style={{ fontSize: '11px', color: '#aaa', marginTop: '4px' }}>☁️ {wx.clouds}</div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -216,26 +220,20 @@ export default async function Page() {
           <div className="compass-col">
             <div className="compass-container">
               
-              {/* MAIN METAR COMPASS */}
               <div className="compass-box">
                 {/* WIND PARTICLE ENGINE CANVAS */}
                 <canvas id="wind-particles" width="500" height="500" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} />
                 
-                {/* COMPASS OVERLAYS */}
                 <div className="compass-layer">
                   <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', color: '#555' }}>N</div>
                   
                   {wx.dir !== 'VRB' ? (
                     <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.dir}deg)`, transition: 'transform 1s' }}>
                       <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
-                      <div style={{ textAlign: 'center', marginTop: '-35px', fontWeight: 'bold', fontSize: '12px', transform: `rotate(-${wx.dir}deg)` }}>
-                        {wx.speed}KT {wx.gust > 0 && <span style={{color: '#facc15'}}><br/>G{wx.gust}</span>}
-                      </div>
                     </div>
                   ) : (
                     <div style={{ position: 'absolute', top: '22%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
                       <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff' }}>VRB</div>
-                      <div style={{ fontWeight: 'bold', fontSize: '12px', color: '#aaa', marginTop: '2px' }}>{wx.speed}KT {wx.gust > 0 && `G${wx.gust}`}</div>
                     </div>
                   )}
 
@@ -255,7 +253,7 @@ export default async function Page() {
                   </div>
                 </div>
 
-                {/* WIND PARTICLE LOGIC SCRIPT */}
+                {/* UPDATED: WIND PARTICLE LOGIC SCRIPT */}
                 <script dangerouslySetInnerHTML={{__html: `
                   (function() {
                     const canvas = document.getElementById('wind-particles');
@@ -269,28 +267,20 @@ export default async function Page() {
                     const vFrom = ${wx.varFrom !== null ? wx.varFrom : 'null'};
                     const vTo = ${wx.varTo !== null ? wx.varTo : 'null'};
                     
-                    // Adjust particle amount roughly based on speed
-                    let numParticles = spd === 0 ? 0 : Math.min(120, spd * 4);
-                    const particles = [];
+                    // Base particles on speed, but ensure a decent amount
+                    let numParticles = spd === 0 ? 0 : Math.min(150, 40 + (spd * 4));
+                    if (dir === 'VRB' && spd > 0) numParticles = Math.max(80, numParticles);
                     
-                    function getRandomAngle() {
-                      if (dir === 'VRB') return Math.random() * 360;
-                      if (vFrom !== null && vTo !== null) {
-                        let diff = vTo - vFrom;
-                        if (diff < 0) diff += 360; // handle wrap around 360
-                        return (vFrom + Math.random() * diff) % 360;
-                      }
-                      return parseFloat(dir) || 0;
-                    }
+                    const particles = [];
+                    let globalPhase = 0; // Used to swing the entire wind direction
 
                     for (let i = 0; i < numParticles; i++) {
                       particles.push({
-                        x: Math.random() * w,
+                        x: Math.random() * w, // Spawn anywhere uniformly
                         y: Math.random() * h,
                         life: Math.random(),
-                        // Base speed + variance if gusting
                         speed: spd + (gust > spd ? Math.random() * (gust - spd) : 0),
-                        angle: getRandomAngle()
+                        offset: Math.random() * 100 // offset for turbulence phase
                       });
                     }
 
@@ -299,39 +289,65 @@ export default async function Page() {
                       ctx.strokeStyle = 'rgba(74, 222, 128, 0.4)'; 
                       ctx.lineWidth = 1.5;
 
+                      globalPhase += 0.015; // Speed of the swing/turbulence
+                      
+                      let currentAngle = parseFloat(dir) || 0;
+
+                      // GLOBAL SWING LOGIC FOR VARIABLE WIND
+                      if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
+                        let diff = vTo - vFrom;
+                        if (diff < -180) diff += 360; // shortest path
+                        if (diff > 180) diff -= 360;
+                        let mid = vFrom + diff / 2;
+                        // Sine wave smoothly swings angle between vFrom and vTo
+                        currentAngle = mid + (diff / 2) * Math.sin(globalPhase);
+                      }
+
+                      // Convert to radians (Wind FROM direction)
+                      let rad = (currentAngle + 180) * Math.PI / 180;
+                      let globalDx = Math.sin(rad);
+                      let globalDy = -Math.cos(rad);
+
                       particles.forEach(p => {
-                        // Math: Aviation direction is "Wind from X". 
-                        // So a North wind (360) moves South (Positive Y). East wind (090) moves West (Negative X).
-                        let rad = (p.angle + 180) * Math.PI / 180;
-                        let dx = Math.sin(rad) * (p.speed * 0.15);
-                        let dy = -Math.cos(rad) * (p.speed * 0.15);
+                        let dx, dy;
+
+                        if (dir === 'VRB') {
+                          // VORTEX / TURBULENCE LOGIC
+                          let cx = w / 2;
+                          let cy = h / 2;
+                          let dxC = p.x - cx;
+                          let dyC = p.y - cy;
+                          let dist = Math.sqrt(dxC*dxC + dyC*dyC) || 1;
+                          
+                          // Circular tangent vector (swirl)
+                          dx = (-dyC / dist) * p.speed * 0.25;
+                          dy = (dxC / dist) * p.speed * 0.25;
+                          
+                          // Inject some random wandering noise
+                          dx += Math.sin(p.offset + globalPhase) * 0.8;
+                          dy += Math.cos(p.offset + globalPhase) * 0.8;
+                        } else {
+                          // STANDARD DIRECTIONAL WIND
+                          dx = globalDx * (p.speed * 0.15);
+                          dy = globalDy * (p.speed * 0.15);
+                        }
                         
                         ctx.beginPath();
                         ctx.moveTo(p.x, p.y);
                         
                         p.x += dx;
                         p.y += dy;
-                        p.life -= 0.015;
+                        p.life -= 0.008; // Slower fade for longer trails
 
-                        // Draw particle trail streak
-                        ctx.lineTo(p.x + dx * 2, p.y + dy * 2);
+                        ctx.lineTo(p.x + dx * 2.5, p.y + dy * 2.5);
                         ctx.stroke();
 
-                        // Reset particle if dead or out of bounds
-                        if (p.life <= 0 || p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
-                          p.angle = getRandomAngle();
-                          p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
+                        // Respawn uniformely if dead or off-screen
+                        if (p.life <= 0 || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
+                          p.x = Math.random() * w;
+                          p.y = Math.random() * h;
                           p.life = 1;
-                          
-                          // Respawn logically opposite to the wind to flow across
-                          if (dir !== 'VRB') {
-                             let respawnRad = p.angle * Math.PI / 180;
-                             p.x = w/2 + Math.sin(respawnRad) * (w/2) * Math.random();
-                             p.y = h/2 - Math.cos(respawnRad) * (h/2) * Math.random();
-                          } else {
-                             p.x = Math.random() * w;
-                             p.y = Math.random() * h;
-                          }
+                          p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
                         }
                       });
                       requestAnimationFrame(draw);
@@ -348,7 +364,6 @@ export default async function Page() {
                   {data.upcomingForecasts.map((fcst, i) => (
                     <div key={i} className="taf-wind-box">
                       
-                      {/* BECMG Indicator */}
                       {fcst.type === "BECMG" && (
                         <div style={{ position: 'absolute', top: '-8px', background: '#eab308', color: '#000', fontSize: '9px', fontWeight: 'bold', padding: '2px 6px', borderRadius: '4px' }}>
                           BECMG
