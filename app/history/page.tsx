@@ -9,12 +9,14 @@ import Link from 'next/link';
 interface AeroHistory {
   time: string;
   timestamp: number;
-  actSpd?: number;
-  actDir?: number;
-  actTemp?: number;
-  tafSpd?: number;
-  tafDir?: number;
-  tafTemp?: number;
+  actSpd?: number | null;
+  actDir?: number | null;
+  actGust?: number | null; // NEW: Actual Gust
+  tafSpd?: number | null;
+  tafDir?: number | null;
+  tafGust?: number | null; // NEW: Forecast Gust
+  actTemp?: number | null;
+  tafTemp?: number | null;
   raw?: string;
   dataType?: string; 
   isFuture: boolean;
@@ -24,20 +26,47 @@ export default function HistoryPage() {
   const [data, setData] = useState<AeroHistory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Single, cache-busting fetch block
   useEffect(() => {
     const timeStamp = new Date().getTime(); 
     
     fetch(`/api/history?t=${timeStamp}`, { cache: 'no-store' })
       .then(res => res.json())
-      .then(json => {
-        setData(json);
+      .then((json: AeroHistory[]) => {
+        // --- DATA PROCESSOR: PREVENT WIND DIRECTION WRAP-AROUND ---
+        const processed: AeroHistory[] = [];
+        let prevAct: number | null = null;
+        let prevTaf: number | null = null;
+
+        json.forEach((point) => {
+          // Check if direction jumped by more than 180 degrees
+          const actJump = prevAct !== null && point.actDir !== null && Math.abs(point.actDir - prevAct) > 180;
+          const tafJump = prevTaf !== null && point.tafDir !== null && Math.abs(point.tafDir - prevTaf) > 180;
+
+          if (actJump || tafJump) {
+            // Insert a silent "break" point to snap the line
+            processed.push({
+              ...point,
+              time: point.time + '\u200B', // Zero-width space makes it a unique point on X-axis without messing up text
+              timestamp: point.timestamp - 1, 
+              actDir: actJump ? null : point.actDir,
+              tafDir: tafJump ? null : point.tafDir,
+              // Null out everything else so we don't accidentally draw dots on other charts
+              actSpd: null, tafSpd: null, actGust: null, tafGust: null, actTemp: null, tafTemp: null 
+            });
+          }
+          
+          processed.push(point);
+          
+          if (point.actDir !== null && point.actDir !== undefined) prevAct = point.actDir;
+          if (point.tafDir !== null && point.tafDir !== undefined) prevTaf = point.tafDir;
+        });
+
+        setData(processed);
         setLoading(false);
       })
       .catch(err => console.error("History fetch error:", err));
   }, []);
 
-  // Auto-scroll charts to show the "NOW" line in the center
   useEffect(() => {
     if (!loading) {
       setTimeout(() => {
@@ -57,7 +86,6 @@ export default function HistoryPage() {
     );
   }
 
-  // Find the closest "NOW" label based on current hour
   const nowD = new Date();
   const hkHour = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Hong_Kong', hour: '2-digit', hour12: false }).format(nowD);
   const hkDay = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Hong_Kong', day: '2-digit' }).format(nowD);
@@ -77,22 +105,11 @@ export default function HistoryPage() {
         }
       `}} />
 
-      {/* HEADER NAVIGATION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
         <Link href="/" style={{ color: '#3b82f6', textDecoration: 'none', fontSize: '12px' }}>
           ← DASHBOARD
         </Link>
-        
-        <Link href="/all-history" style={{ 
-          background: '#1e293b', 
-          color: '#4ade80', 
-          padding: '6px 12px', 
-          borderRadius: '4px', 
-          fontSize: '11px', 
-          textDecoration: 'none',
-          border: '1px solid #2a3b5a',
-          fontWeight: 'bold'
-        }}>
+        <Link href="/all-history" style={{ background: '#1e293b', color: '#4ade80', padding: '6px 12px', borderRadius: '4px', fontSize: '11px', textDecoration: 'none', border: '1px solid #2a3b5a', fontWeight: 'bold' }}>
           DATA ARCHIVE ❯
         </Link>
       </div>
@@ -101,24 +118,26 @@ export default function HistoryPage() {
 
       <div className="chart-grid">
         
-        {/* WIND SPEED */}
+        {/* WIND SPEED & GUSTS */}
         <div style={{ minWidth: '340px', flex: '1', background: '#162540', padding: '15px', borderRadius: '8px', border: '1px solid #2a3b5a' }}>
-          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>WIND SPEED (KT) &lt;-- SCROLL --&gt;</div>
+          <div style={{ fontSize: '11px', color: '#88a', marginBottom: '10px', fontWeight: 'bold' }}>WIND SPEED & GUST (KT) &lt;-- SCROLL --&gt;</div>
           <div className="chart-scroll-container" style={{ overflowX: 'auto', scrollbarWidth: 'thin', paddingBottom: '10px' }}>
-            {/* Expanded to 3600px to ensure every single data point has room */}
             <div style={{ width: '3600px', height: 250 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={data}>
                   <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
-                  {/* minTickGap lowered to force Recharts to show more timestamps */}
                   <XAxis dataKey="time" minTickGap={15} fontSize={10} stroke="#556" />
                   <YAxis fontSize={10} stroke="#88a" />
                   <Tooltip contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
-                  <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
+                  <Line type="linear" dataKey="actSpd" stroke="#4ade80" name="Actual Spd" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
+                  {/* NEW GUST LINES */}
+                  <Line type="linear" dataKey="actGust" stroke="#facc15" name="Actual Gust" strokeWidth={2} strokeDasharray="3 3" dot={{ r: 2 }} connectNulls />
+                  
+                  <Line type="stepAfter" dataKey="tafSpd" stroke="#3b82f6" name="Forecast Spd" strokeDasharray="5 5" strokeWidth={2} connectNulls />
+                  <Line type="stepAfter" dataKey="tafGust" stroke="#c084fc" name="Forecast Gust" strokeDasharray="3 3" strokeWidth={2} connectNulls />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -139,8 +158,9 @@ export default function HistoryPage() {
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
                   <ReferenceLine x={currentHourLabel} stroke="#ef4444" strokeWidth={2} label={{ value: 'NOW', fill: '#ef4444', fontSize: 10, position: 'top' }} />
                   
-                  <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls />
-                  <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls />
+                  {/* connectNulls={false} is critical here so VRB disconnects the line */}
+                  <Line type="linear" dataKey="actDir" stroke="#4ade80" name="Actual" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} connectNulls={false} />
+                  <Line type="stepAfter" dataKey="tafDir" stroke="#3b82f6" name="Forecast" strokeDasharray="5 5" strokeWidth={2} connectNulls={false} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -182,14 +202,14 @@ export default function HistoryPage() {
             </tr>
           </thead>
           <tbody>
-            {[...data].reverse().filter(d => d.raw).slice(0, 10).map((row, i) => {
+            {[...data].filter(d => d.raw).reverse().slice(0, 10).map((row, i) => {
               let typeColor = '#3b82f6';
               if (row.dataType === 'METAR') typeColor = '#4ade80'; 
               if (row.dataType?.includes('ATIS')) typeColor = '#f59e0b'; 
 
               return (
                 <tr key={i} style={{ borderBottom: '1px solid #162540' }}>
-                  <td style={{ padding: '12px', color: '#88a', whiteSpace: 'nowrap' }}>{row.time}</td>
+                  <td style={{ padding: '12px', color: '#88a', whiteSpace: 'nowrap' }}>{row.time.replace('\u200B', '')}</td>
                   <td style={{ color: typeColor, fontWeight: 'bold', whiteSpace: 'nowrap', paddingRight: '10px' }}>
                       {row.dataType || 'UNKNOWN'}
                   </td>
