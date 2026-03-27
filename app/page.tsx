@@ -200,10 +200,11 @@ export default async function Page() {
           <div>
             <div style={{ fontSize: '10px', color: '#88a' }}>WIND / VIS / TEMP</div>
             
-            {/* UPDATED: Dynamic Wind String including VRB, V bounds, and Gusts */}
             <div style={{ fontSize: '18px', color: '#4ade80' }}>
               {wx.dir === 'VRB' ? 'VRB' : `${wx.dir.toString().padStart(3, '0')}°`}
-              {wx.varFrom !== null && wx.varTo !== null ? <span style={{color: '#93c5fd'}}>V{wx.varTo.toString().padStart(3, '0')}°</span> : ''}
+              {wx.varFrom !== null && wx.varTo !== null ? (
+                <span style={{color: '#93c5fd'}}> ({wx.varFrom.toString().padStart(3, '0')}°V{wx.varTo.toString().padStart(3, '0')}°)</span>
+              ) : ''}
               /{wx.speed}KT {wx.gust > 0 && <span style={{color: '#facc15'}}>G{wx.gust}KT</span>} 
               <span style={{color: '#fff'}}> {wx.vis} {wx.temp}°C</span>
             </div>
@@ -244,7 +245,7 @@ export default async function Page() {
                       
                       return (
                         <div key={rwy.id} style={{ position: 'relative', height: '14px', background: '#000', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px', fontSize: '10px' }}>
-                          <span style={{color: '#666'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '1px dashed #444', margin: '0 5px' }} /><span style={{color: '#666'}}>{rwy.r}</span>
+                          <span style={{color: '#FFFFFF'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '1px dashed #444', margin: '0 5px' }} /><span style={{color: '#FFFFFF'}}>{rwy.r}</span>
                           {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-60px', color: '#3b82f6', fontWeight: 'bold' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
                           {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-60px', color: '#f59e0b', fontWeight: 'bold' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
                         </div>
@@ -253,7 +254,7 @@ export default async function Page() {
                   </div>
                 </div>
 
-                {/* UPDATED: WIND PARTICLE LOGIC SCRIPT */}
+                {/* WIND PARTICLE LOGIC SCRIPT */}
                 <script dangerouslySetInnerHTML={{__html: `
                   (function() {
                     const canvas = document.getElementById('wind-particles');
