@@ -219,15 +219,15 @@ export default function HistoryPage() {
                   />
                   
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} 
-                    formatter={(value: any, name: string) => {
-                      // Ensure tooltip always shows standard aviation degrees
-                      if (typeof value === 'number' && name.includes('Dir')) {
-                        let v = Math.round(value) % 360;
-                        if (v < 0) v += 360;
-                        return [`${v === 0 ? 360 : v}°`, name];
-                      }
-                      return [value, name];
+                   contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} 
+                   formatter={(value: any, name: any) => {
+                     // Ensure tooltip always shows standard aviation degrees
+                     if (typeof value === 'number' && typeof name === 'string' && name.includes('Dir')) {
+                       let v = Math.round(value) % 360;
+                       if (v < 0) v += 360;
+                       return [`${v === 0 ? 360 : v}°`, name];
+                     }
+                     return [value, name];
                     }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '10px' }} />
