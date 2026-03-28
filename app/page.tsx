@@ -290,7 +290,7 @@ export default async function Page() {
                     function getWindColor(s) {
                       let r, g, b;
                       if (s <= 1) {
-                        r = 59; g = 130; b = 246; // Blue
+                        r = 49; g = 90; b = 210; // Blue
                       } else if (s <= 25) {
                         let t = (s - 1) / 24;
                         r = Math.floor(59 + t * (250 - 59));
