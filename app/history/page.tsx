@@ -63,19 +63,38 @@ export default function HistoryPage() {
           }
         });
 
-        // 1. Group by time to prevent Recharts from dot-stacking duplicate timestamps
+        // 1. Group by time, restricting actuals ONLY to METAR and forecasts ONLY to TAF
         const grouped: Record<string, AeroHistory> = {};
         json.forEach(p => {
           if (!grouped[p.time]) {
-            grouped[p.time] = { ...p };
+            // Initialize an empty point 
+            grouped[p.time] = { 
+              time: p.time, 
+              timestamp: p.timestamp, 
+              isFuture: p.isFuture,
+              raw: p.raw,
+              dataType: p.dataType
+            };
           } else {
+            // If multiple logs exist at this time, ensure METAR or TAF overrides ATIS for the label
+            if (p.dataType === 'METAR' || p.dataType === 'TAF') {
+              grouped[p.time].dataType = p.dataType;
+              grouped[p.time].raw = p.raw;
+            }
+          }
+
+          // ONLY apply Actual data if it comes from a METAR
+          if (p.dataType === 'METAR') {
             if (typeof p.actDir === 'number') grouped[p.time].actDir = p.actDir;
             if (typeof p.actSpd === 'number') grouped[p.time].actSpd = p.actSpd;
             if (typeof p.actGust === 'number') grouped[p.time].actGust = p.actGust;
             if (typeof p.actTemp === 'number') grouped[p.time].actTemp = p.actTemp;
             if (typeof p.actVarFrom === 'number') grouped[p.time].actVarFrom = p.actVarFrom;
             if (typeof p.actVarTo === 'number') grouped[p.time].actVarTo = p.actVarTo;
-            
+          }
+          
+          // ONLY apply Forecast data if it comes from a TAF
+          if (p.dataType === 'TAF') {
             if (typeof p.tafDir === 'number') grouped[p.time].tafDir = p.tafDir;
             if (typeof p.tafSpd === 'number') grouped[p.time].tafSpd = p.tafSpd;
             if (typeof p.tafGust === 'number') grouped[p.time].tafGust = p.tafGust;
@@ -377,17 +396,4 @@ export default function HistoryPage() {
 
               return (
                 <tr key={i} style={{ borderBottom: '1px solid #162540' }}>
-                  <td style={{ padding: '12px', color: '#88a', whiteSpace: 'nowrap' }}>{row.time}</td>
-                  <td style={{ color: typeColor, fontWeight: 'bold', whiteSpace: 'nowrap', paddingRight: '10px' }}>
-                      {row.dataType || 'UNKNOWN'}
-                  </td>
-                  <td style={{ color: '#ccc', fontSize: '9px', paddingRight: '10px' }}>{row.raw}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </main>
-  );
-}
+                  <td sty
