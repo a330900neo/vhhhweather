@@ -394,4 +394,13 @@ export default function HistoryPage() {
                   <td style={{ color: typeColor, fontWeight: 'bold', whiteSpace: 'nowrap', paddingRight: '10px' }}>
                       {row.dataType || 'UNKNOWN'}
                   </td>
-                  <td style={{ color: '#ccc', fontSize: '9px', padding
+                  <td style={{ color: '#ccc', fontSize: '9px', paddingRight: '10px' }}>{row.raw}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </main>
+  );
+}
