@@ -284,7 +284,7 @@ export default async function Page() {
                     let globalPhase = 0; 
                     
                     const MAX_LIFE = 1900; // 1.9s lifetime constraint
-                    const TRAIL_TIME = 800; // 0.8s fading trail
+                    const TRAIL_TIME = 1250; // 1.25s fading trail
 
                     // DYNAMIC WIND COLOR MAPPING
                     function getWindColor(s) {
@@ -398,7 +398,7 @@ export default async function Page() {
                             let pt1 = p.history[i-1];
                             let pt2 = p.history[i];
                             let age = now - pt2.time; 
-                            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.7); 
+                            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.7); // custom visual, dont change unless told
                             
                             ctx.strokeStyle = \`rgba(\${p.color.r}, \${p.color.g}, \${p.color.b}, \${masterAlpha * trailAlpha})\`;
                             ctx.beginPath();
