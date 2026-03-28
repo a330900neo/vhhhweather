@@ -233,22 +233,34 @@ export default async function Page() {
                       <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
                     </div>
                   ) : (
-                    <div style={{ position: 'absolute', top: '15%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                    <div style={{ position: 'absolute', top: '22%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
                       <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff' }}>VRB</div>
                     </div>
                   )}
 
-                  {/* SCALED UP RUNWAYS TO USE MORE SPACE */}
-                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '20px', width: '65%' }}>
+                  {/* THICKER, WIDER RUNWAYS WITH BOUNDED LABELS */}
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '15px', width: '85%', maxWidth: '420px', alignItems: 'center' }}>
                     {runwayConfig.map((rwy) => {
                       const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
                       const activeDep = depRunways.includes(rwy.l) || depRunways.includes(rwy.r);
                       
                       return (
-                        <div key={rwy.id} style={{ position: 'relative', height: '32px', background: '#000', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', fontSize: '14px', fontWeight: 'bold' }}>
-                          <span style={{color: '#FFFFFF'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '2px dashed #555', margin: '0 10px' }} /><span style={{color: '#FFFFFF'}}>{rwy.r}</span>
-                          {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-70px', color: '#3b82f6', fontSize: '16px' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
-                          {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-70px', color: '#f59e0b', fontSize: '16px' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
+                        <div key={rwy.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'center' }}>
+                          <div style={{ width: '50px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold' }}>
+                            {activeArr && isOps07 && <span style={{color: '#3b82f6'}}>➔ ARR</span>}
+                            {activeDep && !isOps07 && <span style={{color: '#f59e0b'}}>← DEP</span>}
+                          </div>
+
+                          <div style={{ flex: 1, height: '32px', background: '#000', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', fontSize: '14px', fontWeight: 'bold' }}>
+                            <span style={{color: '#FFFFFF'}}>{rwy.l}</span>
+                            <div style={{ flex: 1, borderTop: '2px dashed #555', margin: '0 10px' }} />
+                            <span style={{color: '#FFFFFF'}}>{rwy.r}</span>
+                          </div>
+
+                          <div style={{ width: '50px', textAlign: 'left', fontSize: '14px', fontWeight: 'bold' }}>
+                            {activeDep && isOps07 && <span style={{color: '#f59e0b'}}>DEP ➔</span>}
+                            {activeArr && !isOps07 && <span style={{color: '#3b82f6'}}>ARR ←</span>}
+                          </div>
                         </div>
                       );
                     })}
@@ -274,17 +286,18 @@ export default async function Page() {
                     
                     const particles = [];
                     let globalPhase = 0; 
-                    let lastTime = performance.now();
 
                     // DYNAMIC WIND COLOR INTERPOLATION
                     function getWindColor(s, alpha) {
                       let r, g, b;
                       if (s <= 25) {
+                        // Blue (59, 130, 246) to Yellow (250, 204, 21)
                         let t = s / 25;
                         r = Math.floor(59 + t * (250 - 59));
                         g = Math.floor(130 + t * (204 - 130));
                         b = Math.floor(246 + t * (21 - 246));
                       } else {
+                        // Yellow (250, 204, 21) to Red (239, 68, 68)
                         let t = Math.min((s - 25) / 45, 1);
                         r = Math.floor(250 + t * (239 - 250));
                         g = Math.floor(204 + t * (68 - 204));
@@ -301,24 +314,23 @@ export default async function Page() {
                         speed: spd + (gust > spd ? Math.random() * (gust - spd) : 0),
                         offset: Math.random() * 100,
                         alpha: 0,
-                        history: [] // Added history array for clean drawing
+                        history: [] // Holds timestamped coordinates
                       });
                     }
 
-                    function draw(time) {
-                      // Calculate deltaTime to ensure consistent speed on all monitors (60Hz or 144Hz)
-                      let dt = (time - lastTime) / 16.666;
-                      if (dt > 3) dt = 3; // Prevent massive jumps if tab was inactive
-                      lastTime = time;
+                    let lastTime = performance.now();
 
-                      // Use cleanRect to completely prevent background smudging
+                    function draw(time) {
+                      // Normalize performance across different monitors using delta time
+                      let dt = (time - lastTime) / 1000;
+                      lastTime = time;
+                      if (dt > 0.1) dt = 0.016; // Prevent massive jumps after switching tabs
+
+                      // TRUE CLEAN CLEAR - No more smudgy boxes
                       ctx.clearRect(0, 0, w, h);
                       
                       ctx.lineWidth = 1.5;
-                      ctx.lineCap = "round";
-                      ctx.lineJoin = "round";
-                      
-                      globalPhase += 0.015 * dt; 
+                      globalPhase += dt * 0.9; 
                       
                       let currentAngle = parseFloat(dir) || 0;
 
@@ -337,7 +349,7 @@ export default async function Page() {
                       particles.forEach(p => {
                         let dx, dy;
 
-                        // Smooth alpha transitions
+                        // SMOOTH EDGE & LIFE FADING
                         let margin = 45; 
                         let distToEdgeX = Math.min(p.x, w - p.x);
                         let distToEdgeY = Math.min(p.y, h - p.y);
@@ -345,7 +357,12 @@ export default async function Page() {
                         let lifeFade = Math.max(0, Math.min(1, p.life * 5)); 
                         
                         let targetAlpha = Math.min(edgeFade, lifeFade);
-                        p.alpha += (targetAlpha - p.alpha) * 0.1 * dt; 
+                        p.alpha += (targetAlpha - p.alpha) * 0.1; 
+
+                        ctx.strokeStyle = getWindColor(p.speed, Math.max(0, p.alpha));
+
+                        // Base velocity uniform to hardware frame rate
+                        let spdFactor = p.speed * 8 * dt;
 
                         if (dir === 'VRB') {
                           let cx = w / 2;
@@ -354,33 +371,31 @@ export default async function Page() {
                           let dyC = p.y - cy;
                           let dist = Math.sqrt(dxC*dxC + dyC*dyC) || 1;
                           
-                          dx = (-dyC / dist) * p.speed * 0.25;
-                          dy = (dxC / dist) * p.speed * 0.25;
-                          dx += Math.sin(p.offset + globalPhase) * 0.8;
-                          dy += Math.cos(p.offset + globalPhase) * 0.8;
+                          dx = (-dyC / dist) * spdFactor * 2;
+                          dy = (dxC / dist) * spdFactor * 2;
+                          dx += Math.sin(p.offset + globalPhase) * 40 * dt;
+                          dy += Math.cos(p.offset + globalPhase) * 40 * dt;
                         } else {
-                          dx = globalDx * (p.speed * 0.12);
-                          dy = globalDy * (p.speed * 0.12);
+                          dx = globalDx * spdFactor;
+                          dy = globalDy * spdFactor;
                         }
                         
-                        // Apply deltaTime directly to movement
-                        p.x += dx * dt;
-                        p.y += dy * dt;
-                        p.life -= 0.005 * dt; 
+                        p.x += dx;
+                        p.y += dy;
+                        p.life -= dt * 0.3; 
 
-                        // Update trail history
-                        p.history.push({x: p.x, y: p.y});
-                        if (p.history.length > 12) p.history.shift(); // Trail length
+                        // Strict 0.7 second trail via historical pathing
+                        p.history.push({ x: p.x, y: p.y, time: time });
+                        while (p.history.length > 0 && time - p.history[0].time > 700) {
+                          p.history.shift();
+                        }
 
-                        // Draw clean path
                         if (p.history.length > 1) {
                           ctx.beginPath();
-                          for(let i = 0; i < p.history.length; i++) {
-                            let pt = p.history[i];
-                            if (i === 0) ctx.moveTo(pt.x, pt.y);
-                            else ctx.lineTo(pt.x, pt.y);
+                          ctx.moveTo(p.history[0].x, p.history[0].y);
+                          for (let i = 1; i < p.history.length; i++) {
+                            ctx.lineTo(p.history[i].x, p.history[i].y);
                           }
-                          ctx.strokeStyle = getWindColor(p.speed, Math.max(0, p.alpha));
                           ctx.stroke();
                         }
 
@@ -390,8 +405,8 @@ export default async function Page() {
                           p.y = Math.random() * h;
                           p.life = 1;
                           p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
-                          p.alpha = 0;
-                          p.history = []; // Clear trail on respawn
+                          p.alpha = 0; 
+                          p.history = [];
                         }
                       });
                       requestAnimationFrame(draw);
