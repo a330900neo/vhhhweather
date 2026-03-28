@@ -8,7 +8,9 @@ export default function WindParticles({ wx }: { wx: any }) {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext('2d');
+    
+    // FIX: Assert the type so TypeScript stops complaining inside the draw loop
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!ctx) return;
 
     const w = canvas.width; 
@@ -133,15 +135,14 @@ export default function WindParticles({ wx }: { wx: any }) {
         }
 
         // SEGMENTED PATH RENDERING FOR WINDY-LIKE FADE
-        if (masterAlpha > 0.01 && p.history.length > 0.15) {
+        if (masterAlpha > 0.01 && p.history.length > 1) {
           ctx.lineWidth = 1.8;
           for (let i = 1; i < p.history.length; i++) {
             let pt1 = p.history[i-1];
             let pt2 = p.history[i];
             let age = now - pt2.time; 
             
-            // Your explicitly requested custom visual math:
-            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); 
+            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); // custom visual, dont change unless told
             
             ctx.strokeStyle = `hsla(${p.color.h}, ${p.color.s}%, ${p.color.l}%, ${masterAlpha * trailAlpha})`;
             ctx.beginPath();
