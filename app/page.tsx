@@ -287,22 +287,19 @@ export default async function Page() {
                     const TRAIL_TIME = 1250; // 1.25s fading trail
 
                     // DYNAMIC WIND COLOR MAPPING
+                    // DYNAMIC WIND COLOR MAPPING (HSL VERSION)
                     function getWindColor(s) {
-                      let r, g, b;
-                      if (s <= 1) {
-                        r = 85; g = 0; b = 255; // #5500ff
-                      } else if (s <= 18) {
-                        let t = (s - 1) / 17;
-                        r = Math.floor(85 + t * (26 - 85));
-                        g = Math.floor(0 + t * (255 - 0));
-                        b = Math.floor(255 + t * (0 - 255));
-                      } else {
-                        let t = Math.min((s - 18) / 52, 1); // Caps at 70KT scale
-                        r = Math.floor(26 + t * (255 - 26));
-                        g = Math.floor(255 + t * (0 - 255));
-                        b = 0;
-                      }
-                      return {r, g, b};
+                     let h;
+                     if (s <= 1) {
+                       h = 260; // #5500ff equivalent Hue
+                     } else if (s <= 18) {
+                       let t = (s - 1) / 17;
+                       h = Math.floor(260 - t * (260 - 114)); // Interpolate to Green (114)
+                     } else {
+                       let t = Math.min((s - 18) / 52, 1);
+                       h = Math.floor(114 - t * 114); // Interpolate to Red (0)
+                     }
+                     return { h, s: 100, l: 50 }; // Locked at 100% saturation
                     }
 
                     function initParticle(p = {}) {
@@ -400,7 +397,7 @@ export default async function Page() {
                             let age = now - pt2.time; 
                             let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); // custom visual, dont change unless told
                             
-                            ctx.strokeStyle = \`rgba(\${p.color.r}, \${p.color.g}, \${p.color.b}, \${masterAlpha * trailAlpha})\`;
+                            ctx.strokeStyle = \`hsla(\${p.color.h}, \${p.color.s}%, \${p.color.l}%, \${masterAlpha * trailAlpha})\`;
                             ctx.beginPath();
                             ctx.moveTo(pt1.x, pt1.y);
                             ctx.lineTo(pt2.x, pt2.y);
