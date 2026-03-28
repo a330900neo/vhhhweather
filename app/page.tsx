@@ -169,7 +169,7 @@ export default async function Page() {
         .dashboard-container { width: 100%; max-width: 1400px; display: flex; flex-direction: column; gap: 20px; }
         .dashboard-row { display: flex; flex-direction: column; gap: 30px; }
         .compass-container { display: flex; flex-direction: column; align-items: center; gap: 20px; width: 100%; }
-        .compass-box { position: relative; width: min(80vw, 300px); height: min(80vw, 300px); border: 1px solid #2a3b5a; border-radius: 50%; margin: 0 auto; flex-shrink: 0; overflow: hidden; }
+        .compass-box { position: relative; width: min(80vw, 300px); height: min(80vw, 300px); border: 1px solid #2a3b5a; border-radius: 50%; margin: 0 auto; flex-shrink: 0; overflow: hidden; background: transparent; }
         .compass-layer { position: absolute; z-index: 10; width: 100%; height: 100%; top: 0; left: 0; pointer-events: none; }
         
         .taf-row-wrapper { display: flex; flex-direction: column; align-items: center; width: 100%; max-width: 100vw; overflow: hidden; }
@@ -238,28 +238,24 @@ export default async function Page() {
                     </div>
                   )}
 
-                  {/* THICKER, WIDER RUNWAYS WITH BOUNDED LABELS */}
-                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '15px', width: '85%', maxWidth: '420px', alignItems: 'center' }}>
+                  {/* THICKER, RESPONSIVE RUNWAYS */}
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '15px', width: '85%' }}>
                     {runwayConfig.map((rwy) => {
                       const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
                       const activeDep = depRunways.includes(rwy.l) || depRunways.includes(rwy.r);
                       
                       return (
-                        <div key={rwy.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', justifyContent: 'center' }}>
-                          <div style={{ width: '50px', textAlign: 'right', fontSize: '14px', fontWeight: 'bold' }}>
-                            {activeArr && isOps07 && <span style={{color: '#3b82f6'}}>➔ ARR</span>}
-                            {activeDep && !isOps07 && <span style={{color: '#f59e0b'}}>← DEP</span>}
+                        <div key={rwy.id} style={{ display: 'flex', alignItems: 'center', width: '100%', gap: '8px' }}>
+                          <div style={{ width: '45px', textAlign: 'right', fontSize: '13px', fontWeight: 'bold', textShadow: '0 0 4px #000' }}>
+                            {isOps07 && activeArr ? <span style={{color: '#3b82f6'}}>➔ARR</span> : (!isOps07 && activeDep ? <span style={{color: '#f59e0b'}}>←DEP</span> : '')}
                           </div>
-
-                          <div style={{ flex: 1, height: '32px', background: '#000', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', fontSize: '14px', fontWeight: 'bold' }}>
-                            <span style={{color: '#FFFFFF'}}>{rwy.l}</span>
-                            <div style={{ flex: 1, borderTop: '2px dashed #555', margin: '0 10px' }} />
-                            <span style={{color: '#FFFFFF'}}>{rwy.r}</span>
+                          
+                          <div style={{ flex: 1, position: 'relative', height: '26px', background: '#000', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', fontSize: '12px', fontWeight: 'bold' }}>
+                            <span style={{color: '#FFFFFF'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '2px dashed #555', margin: '0 8px' }} /><span style={{color: '#FFFFFF'}}>{rwy.r}</span>
                           </div>
-
-                          <div style={{ width: '50px', textAlign: 'left', fontSize: '14px', fontWeight: 'bold' }}>
-                            {activeDep && isOps07 && <span style={{color: '#f59e0b'}}>DEP ➔</span>}
-                            {activeArr && !isOps07 && <span style={{color: '#3b82f6'}}>ARR ←</span>}
+                          
+                          <div style={{ width: '45px', textAlign: 'left', fontSize: '13px', fontWeight: 'bold', textShadow: '0 0 4px #000' }}>
+                            {isOps07 && activeDep ? <span style={{color: '#f59e0b'}}>DEP➔</span> : (!isOps07 && activeArr ? <span style={{color: '#3b82f6'}}>ARR←</span> : '')}
                           </div>
                         </div>
                       );
@@ -267,7 +263,7 @@ export default async function Page() {
                   </div>
                 </div>
 
-                {/* WIND PARTICLE LOGIC SCRIPT */}
+                {/* ADVANCED WIND PARTICLE LOGIC SCRIPT */}
                 <script dangerouslySetInnerHTML={{__html: `
                   (function() {
                     const canvas = document.getElementById('wind-particles');
@@ -286,51 +282,56 @@ export default async function Page() {
                     
                     const particles = [];
                     let globalPhase = 0; 
+                    
+                    const MAX_LIFE = 2100; // 2.1s lifetime constraint
+                    const TRAIL_TIME = 700; // 0.7s fading trail
 
-                    // DYNAMIC WIND COLOR INTERPOLATION
-                    function getWindColor(s, alpha) {
+                    // DYNAMIC WIND COLOR MAPPING
+                    function getWindColor(s) {
                       let r, g, b;
-                      if (s <= 25) {
-                        // Blue (59, 130, 246) to Yellow (250, 204, 21)
-                        let t = s / 25;
+                      if (s <= 1) {
+                        r = 59; g = 130; b = 246; // Blue
+                      } else if (s <= 25) {
+                        let t = (s - 1) / 24;
                         r = Math.floor(59 + t * (250 - 59));
                         g = Math.floor(130 + t * (204 - 130));
                         b = Math.floor(246 + t * (21 - 246));
                       } else {
-                        // Yellow (250, 204, 21) to Red (239, 68, 68)
-                        let t = Math.min((s - 25) / 45, 1);
+                        let t = Math.min((s - 25) / 45, 1); // Caps at 70KT scale
                         r = Math.floor(250 + t * (239 - 250));
                         g = Math.floor(204 + t * (68 - 204));
                         b = Math.floor(21 + t * (68 - 21));
                       }
-                      return \`rgba(\${r}, \${g}, \${b}, \${alpha})\`;
+                      return {r, g, b};
+                    }
+
+                    function initParticle(p = {}) {
+                      p.x = Math.random() * w; 
+                      p.y = Math.random() * h;
+                      p.life = Math.random() * MAX_LIFE; // Offset starts
+                      p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
+                      p.offset = Math.random() * 100;
+                      p.color = getWindColor(p.speed);
+                      p.history = []; // Array of {x, y, time}
+                      return p;
                     }
 
                     for (let i = 0; i < numParticles; i++) {
-                      particles.push({
-                        x: Math.random() * w, 
-                        y: Math.random() * h,
-                        life: Math.random(),
-                        speed: spd + (gust > spd ? Math.random() * (gust - spd) : 0),
-                        offset: Math.random() * 100,
-                        alpha: 0,
-                        history: [] // Holds timestamped coordinates
-                      });
+                      particles.push(initParticle());
                     }
 
                     let lastTime = performance.now();
 
-                    function draw(time) {
-                      // Normalize performance across different monitors using delta time
-                      let dt = (time - lastTime) / 1000;
-                      lastTime = time;
-                      if (dt > 0.1) dt = 0.016; // Prevent massive jumps after switching tabs
-
-                      // TRUE CLEAN CLEAR - No more smudgy boxes
-                      ctx.clearRect(0, 0, w, h);
+                    function draw(now) {
+                      requestAnimationFrame(draw);
                       
-                      ctx.lineWidth = 1.5;
-                      globalPhase += dt * 0.9; 
+                      let dt = (now - lastTime) / 1000;
+                      if (dt > 0.1) dt = 0.016; // Safeguard if tab is backgrounded
+                      lastTime = now;
+                      
+                      // Full clear required for segmented fading path
+                      ctx.clearRect(0, 0, w, h);
+                      globalPhase += dt * 2; 
                       
                       let currentAngle = parseFloat(dir) || 0;
 
@@ -346,70 +347,73 @@ export default async function Page() {
                       let globalDx = Math.sin(rad);
                       let globalDy = -Math.cos(rad);
 
-                      particles.forEach(p => {
-                        let dx, dy;
+                      ctx.lineCap = 'round';
+                      ctx.lineJoin = 'round';
 
-                        // SMOOTH EDGE & LIFE FADING
+                      particles.forEach(p => {
+                        p.life += dt * 1000;
+
+                        // SMOOTH EDGE FADE
                         let margin = 45; 
                         let distToEdgeX = Math.min(p.x, w - p.x);
                         let distToEdgeY = Math.min(p.y, h - p.y);
                         let edgeFade = Math.max(0, Math.min(1, Math.min(distToEdgeX, distToEdgeY) / margin));
-                        let lifeFade = Math.max(0, Math.min(1, p.life * 5)); 
                         
-                        let targetAlpha = Math.min(edgeFade, lifeFade);
-                        p.alpha += (targetAlpha - p.alpha) * 0.1; 
-
-                        ctx.strokeStyle = getWindColor(p.speed, Math.max(0, p.alpha));
-
-                        // Base velocity uniform to hardware frame rate
-                        let spdFactor = p.speed * 8 * dt;
+                        // LIFECYCLE FADE
+                        let lifeFade = 1;
+                        if (p.life < 300) lifeFade = p.life / 300; // Fade in 0.3s
+                        else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); // Fade out last 0.4s
+                        
+                        let masterAlpha = Math.min(edgeFade, lifeFade);
+                        let pxPerSec = p.speed * 8; 
+                        let dx, dy;
 
                         if (dir === 'VRB') {
-                          let cx = w / 2;
-                          let cy = h / 2;
-                          let dxC = p.x - cx;
-                          let dyC = p.y - cy;
+                          let cx = w / 2; let cy = h / 2;
+                          let dxC = p.x - cx; let dyC = p.y - cy;
                           let dist = Math.sqrt(dxC*dxC + dyC*dyC) || 1;
-                          
-                          dx = (-dyC / dist) * spdFactor * 2;
-                          dy = (dxC / dist) * spdFactor * 2;
-                          dx += Math.sin(p.offset + globalPhase) * 40 * dt;
-                          dy += Math.cos(p.offset + globalPhase) * 40 * dt;
+                          dx = (-dyC / dist) * pxPerSec * 0.4;
+                          dy = (dxC / dist) * pxPerSec * 0.4;
+                          dx += Math.sin(p.offset + globalPhase) * 15;
+                          dy += Math.cos(p.offset + globalPhase) * 15;
+                          dx *= dt; dy *= dt;
                         } else {
-                          dx = globalDx * spdFactor;
-                          dy = globalDy * spdFactor;
+                          dx = globalDx * pxPerSec * dt;
+                          dy = globalDy * pxPerSec * dt;
                         }
                         
                         p.x += dx;
                         p.y += dy;
-                        p.life -= dt * 0.3; 
+                        p.history.push({x: p.x, y: p.y, time: now});
 
-                        // Strict 0.7 second trail via historical pathing
-                        p.history.push({ x: p.x, y: p.y, time: time });
-                        while (p.history.length > 0 && time - p.history[0].time > 700) {
+                        // Ensure trail represents exactly 0.7 seconds via filter
+                        while(p.history.length > 0 && now - p.history[0].time > TRAIL_TIME) {
                           p.history.shift();
                         }
 
-                        if (p.history.length > 1) {
-                          ctx.beginPath();
-                          ctx.moveTo(p.history[0].x, p.history[0].y);
+                        // SEGMENTED PATH RENDERING FOR WINDY-LIKE FADE
+                        if (masterAlpha > 0.01 && p.history.length > 1) {
+                          ctx.lineWidth = 1.8;
                           for (let i = 1; i < p.history.length; i++) {
-                            ctx.lineTo(p.history[i].x, p.history[i].y);
+                            let pt1 = p.history[i-1];
+                            let pt2 = p.history[i];
+                            let age = now - pt2.time; 
+                            let trailAlpha = Math.max(0, 1 - (age / TRAIL_TIME)); 
+                            
+                            ctx.strokeStyle = \`rgba(\${p.color.r}, \${p.color.g}, \${p.color.b}, \${masterAlpha * trailAlpha})\`;
+                            ctx.beginPath();
+                            ctx.moveTo(pt1.x, pt1.y);
+                            ctx.lineTo(pt2.x, pt2.y);
+                            ctx.stroke();
                           }
-                          ctx.stroke();
                         }
 
-                        // Respawn
-                        if ((p.life <= 0 && p.alpha < 0.05) || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-                          p.x = Math.random() * w;
-                          p.y = Math.random() * h;
-                          p.life = 1;
-                          p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
-                          p.alpha = 0; 
-                          p.history = [];
+                        // Resets strictly past 2.1s or completely out of viewport bounds
+                        if (p.life >= MAX_LIFE || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
+                          initParticle(p);
+                          p.life = 0; 
                         }
                       });
-                      requestAnimationFrame(draw);
                     }
                     if (numParticles > 0) requestAnimationFrame(draw);
                   })();
