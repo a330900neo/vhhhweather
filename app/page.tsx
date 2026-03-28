@@ -346,6 +346,7 @@ export default async function Page() {
 
                       ctx.lineCap = 'round';
                       ctx.lineJoin = 'round';
+                      ctx.globalCompositeOperation = 'lighter';
 
                       particles.forEach(p => {
                         p.life += dt * 1000;
