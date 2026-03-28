@@ -290,17 +290,17 @@ export default async function Page() {
                     function getWindColor(s) {
                       let r, g, b;
                       if (s <= 1) {
-                        r = 49; g = 90; b = 210; // Blue
-                      } else if (s <= 25) {
-                        let t = (s - 1) / 24;
-                        r = Math.floor(59 + t * (250 - 59));
-                        g = Math.floor(130 + t * (204 - 130));
-                        b = Math.floor(246 + t * (21 - 246));
+                        r = 85; g = 0; b = 255; // #5500ff
+                      } else if (s <= 18) {
+                        let t = (s - 1) / 17;
+                        r = Math.floor(85 + t * (26 - 85));
+                        g = Math.floor(0 + t * (255 - 0));
+                        b = Math.floor(255 + t * (0 - 255));
                       } else {
-                        let t = Math.min((s - 25) / 45, 1); // Caps at 70KT scale
-                        r = Math.floor(250 + t * (239 - 250));
-                        g = Math.floor(204 + t * (68 - 204));
-                        b = Math.floor(21 + t * (68 - 21));
+                        let t = Math.min((s - 18) / 52, 1); // Caps at 70KT scale
+                        r = Math.floor(26 + t * (255 - 26));
+                        g = Math.floor(255 + t * (0 - 255));
+                        b = 0;
                       }
                       return {r, g, b};
                     }
