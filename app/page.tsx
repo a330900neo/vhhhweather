@@ -398,7 +398,7 @@ export default async function Page() {
                             let pt1 = p.history[i-1];
                             let pt2 = p.history[i];
                             let age = now - pt2.time; 
-                            let trailAlpha = Math.max(0, 1 - (age / TRAIL_TIME + 300) - 0.6); 
+                            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.6); 
                             
                             ctx.strokeStyle = \`rgba(\${p.color.r}, \${p.color.g}, \${p.color.b}, \${masterAlpha * trailAlpha})\`;
                             ctx.beginPath();
