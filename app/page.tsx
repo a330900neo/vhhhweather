@@ -283,8 +283,8 @@ export default async function Page() {
                     const particles = [];
                     let globalPhase = 0; 
                     
-                    const MAX_LIFE = 2100; // 2.1s lifetime constraint
-                    const TRAIL_TIME = 700; // 0.7s fading trail
+                    const MAX_LIFE = 1300; // 1.3s lifetime constraint
+                    const TRAIL_TIME = 400; // 0.4s fading trail
 
                     // DYNAMIC WIND COLOR MAPPING
                     function getWindColor(s) {
