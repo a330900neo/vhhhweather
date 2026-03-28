@@ -283,7 +283,7 @@ export default async function Page() {
                     const particles = [];
                     let globalPhase = 0; 
                     
-                    const MAX_LIFE = 1300; // 1.3s lifetime constraint
+                    const MAX_LIFE = 1900; // 1.9s lifetime constraint
                     const TRAIL_TIME = 400; // 0.4s fading trail
 
                     // DYNAMIC WIND COLOR MAPPING
@@ -392,7 +392,7 @@ export default async function Page() {
                         }
 
                         // SEGMENTED PATH RENDERING FOR WINDY-LIKE FADE
-                        if (masterAlpha > 0.01 && p.history.length > 1) {
+                        if (masterAlpha > 0.01 && p.history.length > 0.1) {
                           ctx.lineWidth = 1.8;
                           for (let i = 1; i < p.history.length; i++) {
                             let pt1 = p.history[i-1];
