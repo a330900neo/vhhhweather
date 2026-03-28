@@ -238,16 +238,17 @@ export default async function Page() {
                     </div>
                   )}
 
-                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '10px', width: '55%' }}>
+                  {/* THICKER, SHORTER RUNWAYS */}
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '15px', width: '40%' }}>
                     {runwayConfig.map((rwy) => {
                       const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
                       const activeDep = depRunways.includes(rwy.l) || depRunways.includes(rwy.r);
                       
                       return (
-                        <div key={rwy.id} style={{ position: 'relative', height: '14px', background: '#000', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 6px', fontSize: '10px' }}>
-                          <span style={{color: '#FFFFFF'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '1px dashed #444', margin: '0 5px' }} /><span style={{color: '#FFFFFF'}}>{rwy.r}</span>
-                          {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-60px', color: '#3b82f6', fontWeight: 'bold' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
-                          {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-60px', color: '#f59e0b', fontWeight: 'bold' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
+                        <div key={rwy.id} style={{ position: 'relative', height: '26px', background: '#000', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', fontSize: '12px', fontWeight: 'bold' }}>
+                          <span style={{color: '#FFFFFF'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '2px dashed #555', margin: '0 8px' }} /><span style={{color: '#FFFFFF'}}>{rwy.r}</span>
+                          {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-65px', color: '#3b82f6', fontSize: '14px' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
+                          {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-65px', color: '#f59e0b', fontSize: '14px' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
                         </div>
                       );
                     })}
@@ -268,43 +269,60 @@ export default async function Page() {
                     const vFrom = ${wx.varFrom !== null ? wx.varFrom : 'null'};
                     const vTo = ${wx.varTo !== null ? wx.varTo : 'null'};
                     
-                    // Base particles on speed, but ensure a decent amount
-                    let numParticles = spd === 0 ? 0 : Math.min(150, 40 + (spd * 4));
-                    if (dir === 'VRB' && spd > 0) numParticles = Math.max(80, numParticles);
+                    let numParticles = spd === 0 ? 0 : Math.min(250, 60 + (spd * 3));
+                    if (dir === 'VRB' && spd > 0) numParticles = Math.max(100, numParticles);
                     
                     const particles = [];
-                    let globalPhase = 0; // Used to swing the entire wind direction
+                    let globalPhase = 0; 
+
+                    // DYNAMIC WIND COLOR INTERPOLATION
+                    function getWindColor(s, alpha) {
+                      let r, g, b;
+                      if (s <= 25) {
+                        // Blue (59, 130, 246) to Yellow (250, 204, 21)
+                        let t = s / 25;
+                        r = Math.floor(59 + t * (250 - 59));
+                        g = Math.floor(130 + t * (204 - 130));
+                        b = Math.floor(246 + t * (21 - 246));
+                      } else {
+                        // Yellow (250, 204, 21) to Red (239, 68, 68)
+                        let t = Math.min((s - 25) / 45, 1);
+                        r = Math.floor(250 + t * (239 - 250));
+                        g = Math.floor(204 + t * (68 - 204));
+                        b = Math.floor(21 + t * (68 - 21));
+                      }
+                      return \`rgba(\${r}, \${g}, \${b}, \${alpha})\`;
+                    }
 
                     for (let i = 0; i < numParticles; i++) {
                       particles.push({
-                        x: Math.random() * w, // Spawn anywhere uniformly
+                        x: Math.random() * w, 
                         y: Math.random() * h,
                         life: Math.random(),
                         speed: spd + (gust > spd ? Math.random() * (gust - spd) : 0),
-                        offset: Math.random() * 100 // offset for turbulence phase
+                        offset: Math.random() * 100,
+                        alpha: 0 // start invisible and fade in
                       });
                     }
 
                     function draw() {
-                      ctx.clearRect(0, 0, w, h);
-                      ctx.strokeStyle = 'rgba(74, 222, 128, 0.4)'; 
+                      // TRAIL EFFECT: Draw low-opacity background instead of clearing completely
+                      ctx.fillStyle = 'rgba(11, 22, 42, 0.15)'; 
+                      ctx.fillRect(0, 0, w, h);
+                      
                       ctx.lineWidth = 1.5;
-
-                      globalPhase += 0.015; // Speed of the swing/turbulence
+                      globalPhase += 0.015; 
                       
                       let currentAngle = parseFloat(dir) || 0;
 
-                      // GLOBAL SWING LOGIC FOR VARIABLE WIND
                       if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
                         let diff = vTo - vFrom;
-                        if (diff < -180) diff += 360; // shortest path
+                        if (diff < -180) diff += 360; 
                         if (diff > 180) diff -= 360;
                         let mid = vFrom + diff / 2;
-                        // Sine wave smoothly swings angle between vFrom and vTo
                         currentAngle = mid + (diff / 2) * Math.sin(globalPhase);
                       }
 
-                      // Convert to radians (Wind FROM direction)
                       let rad = (currentAngle + 180) * Math.PI / 180;
                       let globalDx = Math.sin(rad);
                       let globalDy = -Math.cos(rad);
@@ -312,25 +330,32 @@ export default async function Page() {
                       particles.forEach(p => {
                         let dx, dy;
 
+                        // SMOOTH EDGE & LIFE FADING
+                        let margin = 45; // Fades out if within 45px of the circle edge
+                        let distToEdgeX = Math.min(p.x, w - p.x);
+                        let distToEdgeY = Math.min(p.y, h - p.y);
+                        let edgeFade = Math.max(0, Math.min(1, Math.min(distToEdgeX, distToEdgeY) / margin));
+                        let lifeFade = Math.max(0, Math.min(1, p.life * 5)); // Fades out in last 20% of life
+                        
+                        let targetAlpha = Math.min(edgeFade, lifeFade);
+                        p.alpha += (targetAlpha - p.alpha) * 0.1; // Smooth transition
+
+                        ctx.strokeStyle = getWindColor(p.speed, Math.max(0, p.alpha));
+
                         if (dir === 'VRB') {
-                          // VORTEX / TURBULENCE LOGIC
                           let cx = w / 2;
                           let cy = h / 2;
                           let dxC = p.x - cx;
                           let dyC = p.y - cy;
                           let dist = Math.sqrt(dxC*dxC + dyC*dyC) || 1;
                           
-                          // Circular tangent vector (swirl)
                           dx = (-dyC / dist) * p.speed * 0.25;
                           dy = (dxC / dist) * p.speed * 0.25;
-                          
-                          // Inject some random wandering noise
                           dx += Math.sin(p.offset + globalPhase) * 0.8;
                           dy += Math.cos(p.offset + globalPhase) * 0.8;
                         } else {
-                          // STANDARD DIRECTIONAL WIND
-                          dx = globalDx * (p.speed * 0.15);
-                          dy = globalDy * (p.speed * 0.15);
+                          dx = globalDx * (p.speed * 0.12);
+                          dy = globalDy * (p.speed * 0.12);
                         }
                         
                         ctx.beginPath();
@@ -338,17 +363,19 @@ export default async function Page() {
                         
                         p.x += dx;
                         p.y += dy;
-                        p.life -= 0.008; // Slower fade for longer trails
+                        p.life -= 0.005; 
 
-                        ctx.lineTo(p.x + dx * 2.5, p.y + dy * 2.5);
+                        // Draw slightly extended line segment per frame
+                        ctx.lineTo(p.x + dx, p.y + dy);
                         ctx.stroke();
 
-                        // Respawn uniformely if dead or off-screen
-                        if (p.life <= 0 || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
+                        // Respawn uniformely if deeply faded or off-screen
+                        if ((p.life <= 0 && p.alpha < 0.05) || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
                           p.x = Math.random() * w;
                           p.y = Math.random() * h;
                           p.life = 1;
                           p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
+                          p.alpha = 0; // Reset alpha to fade in smoothly
                         }
                       });
                       requestAnimationFrame(draw);
