@@ -309,7 +309,7 @@ export default async function Page() {
                       p.x = Math.random() * w; 
                       p.y = Math.random() * h;
                       p.life = Math.random() * MAX_LIFE; // Offset starts
-                      p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
+                      p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0),
                       p.offset = Math.random() * 100;
                       p.color = getWindColor(p.speed);
                       p.history = []; // Array of {x, y, time}
