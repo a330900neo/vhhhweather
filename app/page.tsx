@@ -233,22 +233,22 @@ export default async function Page() {
                       <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
                     </div>
                   ) : (
-                    <div style={{ position: 'absolute', top: '22%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
+                    <div style={{ position: 'absolute', top: '15%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
                       <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff' }}>VRB</div>
                     </div>
                   )}
 
-                  {/* THICKER, SHORTER RUNWAYS */}
-                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '15px', width: '40%' }}>
+                  {/* SCALED UP RUNWAYS TO USE MORE SPACE */}
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%) rotate(-17deg)', display: 'flex', flexDirection: 'column', gap: '20px', width: '65%' }}>
                     {runwayConfig.map((rwy) => {
                       const activeArr = arrRunways.includes(rwy.l) || arrRunways.includes(rwy.r);
                       const activeDep = depRunways.includes(rwy.l) || depRunways.includes(rwy.r);
                       
                       return (
-                        <div key={rwy.id} style={{ position: 'relative', height: '26px', background: '#000', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 8px', fontSize: '12px', fontWeight: 'bold' }}>
-                          <span style={{color: '#FFFFFF'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '2px dashed #555', margin: '0 8px' }} /><span style={{color: '#FFFFFF'}}>{rwy.r}</span>
-                          {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-65px', color: '#3b82f6', fontSize: '14px' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
-                          {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-65px', color: '#f59e0b', fontSize: '14px' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
+                        <div key={rwy.id} style={{ position: 'relative', height: '32px', background: '#000', border: '2px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 10px', fontSize: '14px', fontWeight: 'bold' }}>
+                          <span style={{color: '#FFFFFF'}}>{rwy.l}</span><div style={{ flex: 1, borderTop: '2px dashed #555', margin: '0 10px' }} /><span style={{color: '#FFFFFF'}}>{rwy.r}</span>
+                          {activeArr && <div style={{ position: 'absolute', [isOps07 ? 'left' : 'right']: '-70px', color: '#3b82f6', fontSize: '16px' }}>{isOps07 ? '➔ARR' : 'ARR←'}</div>}
+                          {activeDep && <div style={{ position: 'absolute', [isOps07 ? 'right' : 'left']: '-70px', color: '#f59e0b', fontSize: '16px' }}>{isOps07 ? 'DEP➔' : '←DEP'}</div>}
                         </div>
                       );
                     })}
@@ -274,18 +274,17 @@ export default async function Page() {
                     
                     const particles = [];
                     let globalPhase = 0; 
+                    let lastTime = performance.now();
 
                     // DYNAMIC WIND COLOR INTERPOLATION
                     function getWindColor(s, alpha) {
                       let r, g, b;
                       if (s <= 25) {
-                        // Blue (59, 130, 246) to Yellow (250, 204, 21)
                         let t = s / 25;
                         r = Math.floor(59 + t * (250 - 59));
                         g = Math.floor(130 + t * (204 - 130));
                         b = Math.floor(246 + t * (21 - 246));
                       } else {
-                        // Yellow (250, 204, 21) to Red (239, 68, 68)
                         let t = Math.min((s - 25) / 45, 1);
                         r = Math.floor(250 + t * (239 - 250));
                         g = Math.floor(204 + t * (68 - 204));
@@ -301,17 +300,25 @@ export default async function Page() {
                         life: Math.random(),
                         speed: spd + (gust > spd ? Math.random() * (gust - spd) : 0),
                         offset: Math.random() * 100,
-                        alpha: 0 // start invisible and fade in
+                        alpha: 0,
+                        history: [] // Added history array for clean drawing
                       });
                     }
 
-                    function draw() {
-                      // TRAIL EFFECT: Draw low-opacity background instead of clearing completely
-                      ctx.fillStyle = 'rgba(11, 22, 42, 0.15)'; 
-                      ctx.fillRect(0, 0, w, h);
+                    function draw(time) {
+                      // Calculate deltaTime to ensure consistent speed on all monitors (60Hz or 144Hz)
+                      let dt = (time - lastTime) / 16.666;
+                      if (dt > 3) dt = 3; // Prevent massive jumps if tab was inactive
+                      lastTime = time;
+
+                      // Use cleanRect to completely prevent background smudging
+                      ctx.clearRect(0, 0, w, h);
                       
                       ctx.lineWidth = 1.5;
-                      globalPhase += 0.015; 
+                      ctx.lineCap = "round";
+                      ctx.lineJoin = "round";
+                      
+                      globalPhase += 0.015 * dt; 
                       
                       let currentAngle = parseFloat(dir) || 0;
 
@@ -330,17 +337,15 @@ export default async function Page() {
                       particles.forEach(p => {
                         let dx, dy;
 
-                        // SMOOTH EDGE & LIFE FADING
-                        let margin = 45; // Fades out if within 45px of the circle edge
+                        // Smooth alpha transitions
+                        let margin = 45; 
                         let distToEdgeX = Math.min(p.x, w - p.x);
                         let distToEdgeY = Math.min(p.y, h - p.y);
                         let edgeFade = Math.max(0, Math.min(1, Math.min(distToEdgeX, distToEdgeY) / margin));
-                        let lifeFade = Math.max(0, Math.min(1, p.life * 5)); // Fades out in last 20% of life
+                        let lifeFade = Math.max(0, Math.min(1, p.life * 5)); 
                         
                         let targetAlpha = Math.min(edgeFade, lifeFade);
-                        p.alpha += (targetAlpha - p.alpha) * 0.1; // Smooth transition
-
-                        ctx.strokeStyle = getWindColor(p.speed, Math.max(0, p.alpha));
+                        p.alpha += (targetAlpha - p.alpha) * 0.1 * dt; 
 
                         if (dir === 'VRB') {
                           let cx = w / 2;
@@ -358,29 +363,40 @@ export default async function Page() {
                           dy = globalDy * (p.speed * 0.12);
                         }
                         
-                        ctx.beginPath();
-                        ctx.moveTo(p.x, p.y);
-                        
-                        p.x += dx;
-                        p.y += dy;
-                        p.life -= 0.005; 
+                        // Apply deltaTime directly to movement
+                        p.x += dx * dt;
+                        p.y += dy * dt;
+                        p.life -= 0.005 * dt; 
 
-                        // Draw slightly extended line segment per frame
-                        ctx.lineTo(p.x + dx, p.y + dy);
-                        ctx.stroke();
+                        // Update trail history
+                        p.history.push({x: p.x, y: p.y});
+                        if (p.history.length > 12) p.history.shift(); // Trail length
 
-                        // Respawn uniformely if deeply faded or off-screen
+                        // Draw clean path
+                        if (p.history.length > 1) {
+                          ctx.beginPath();
+                          for(let i = 0; i < p.history.length; i++) {
+                            let pt = p.history[i];
+                            if (i === 0) ctx.moveTo(pt.x, pt.y);
+                            else ctx.lineTo(pt.x, pt.y);
+                          }
+                          ctx.strokeStyle = getWindColor(p.speed, Math.max(0, p.alpha));
+                          ctx.stroke();
+                        }
+
+                        // Respawn
                         if ((p.life <= 0 && p.alpha < 0.05) || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
                           p.x = Math.random() * w;
                           p.y = Math.random() * h;
                           p.life = 1;
                           p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
-                          p.alpha = 0; // Reset alpha to fade in smoothly
+                          p.alpha = 0;
+                          p.history = []; // Clear trail on respawn
                         }
                       });
                       requestAnimationFrame(draw);
                     }
-                    if (numParticles > 0) draw();
+                    if (numParticles > 0) requestAnimationFrame(draw);
                   })();
                 `}} />
               </div>
