@@ -392,13 +392,13 @@ export default async function Page() {
                         }
 
                         // SEGMENTED PATH RENDERING FOR WINDY-LIKE FADE
-                        if (masterAlpha > 0.01 && p.history.length > 0) {
+                        if (masterAlpha > 0.01 && p.history.length > 0.15) {
                           ctx.lineWidth = 1.8;
                           for (let i = 1; i < p.history.length; i++) {
                             let pt1 = p.history[i-1];
                             let pt2 = p.history[i];
                             let age = now - pt2.time; 
-                            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.7); // custom visual, dont change unless told
+                            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); // custom visual, dont change unless told
                             
                             ctx.strokeStyle = \`rgba(\${p.color.r}, \${p.color.g}, \${p.color.b}, \${masterAlpha * trailAlpha})\`;
                             ctx.beginPath();
