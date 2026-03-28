@@ -26,31 +26,32 @@ export default function WindParticles({ wx }: { wx: any }) {
     const particles: any[] = [];
     let globalPhase = 0; 
     
-    const MAX_LIFE = 1900; 
-    const TRAIL_TIME = 1250; 
+    const MAX_LIFE = 1900; // 1.9s lifetime constraint
+    const TRAIL_TIME = 1250; // 1.25s fading trail
 
+    // DYNAMIC WIND COLOR MAPPING (HSL VERSION)
     function getWindColor(s: number) {
       let h;
       if (s <= 1) {
-        h = 260; 
+        h = 260; // #5500ff equivalent Hue
       } else if (s <= 18) {
         let t = (s - 1) / 17;
-        h = Math.floor(260 - t * (260 - 114)); 
+        h = Math.floor(260 - t * (260 - 114)); // Interpolate to Green (114)
       } else {
         let t = Math.min((s - 18) / 52, 1);
-        h = Math.floor(114 - t * 114); 
+        h = Math.floor(114 - t * 114); // Interpolate to Red (0)
       }
-      return { h, s: 100, l: 50 }; 
+      return { h, s: 100, l: 50 }; // Locked at 100% saturation
     }
 
     function initParticle(p: any = {}) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
-      p.life = Math.random() * MAX_LIFE; 
+      p.life = Math.random() * MAX_LIFE; // Offset starts
       p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
       p.offset = Math.random() * 100;
       p.color = getWindColor(p.speed);
-      p.history = []; 
+      p.history = []; // Array of {x, y, time}
       return p;
     }
 
@@ -59,19 +60,20 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     let lastTime = performance.now();
-    let animationId: number; // For cleanup
+    let animationId: number; // Stored so we can kill it on page change
 
     function draw(now: number) {
       animationId = requestAnimationFrame(draw);
       
       let dt = (now - lastTime) / 1000;
-      if (dt > 0.1) dt = 0.016; 
+      if (dt > 0.1) dt = 0.016; // Safeguard if tab is backgrounded
       lastTime = now;
       
+      // Full clear required for segmented fading path
       ctx.clearRect(0, 0, w, h);
       globalPhase += dt * 2; 
       
-      let currentAngle = parseFloat(dir) || 0;
+      let currentAngle = parseFloat(dir as string) || 0;
 
       if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
         let diff = vTo - vFrom;
@@ -87,19 +89,21 @@ export default function WindParticles({ wx }: { wx: any }) {
 
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalCompositeOperation = 'lighter'; // Neon blend effect
 
       particles.forEach(p => {
         p.life += dt * 1000;
 
+        // SMOOTH EDGE FADE
         let margin = 45; 
         let distToEdgeX = Math.min(p.x, w - p.x);
         let distToEdgeY = Math.min(p.y, h - p.y);
         let edgeFade = Math.max(0, Math.min(1, Math.min(distToEdgeX, distToEdgeY) / margin));
         
+        // LIFECYCLE FADE
         let lifeFade = 1;
-        if (p.life < 300) lifeFade = p.life / 300; 
-        else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); 
+        if (p.life < 300) lifeFade = p.life / 300; // Fade in 0.3s
+        else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); // Fade out last 0.4s
         
         let masterAlpha = Math.min(edgeFade, lifeFade);
         let pxPerSec = p.speed * 8; 
@@ -123,16 +127,20 @@ export default function WindParticles({ wx }: { wx: any }) {
         p.y += dy;
         p.history.push({x: p.x, y: p.y, time: now});
 
+        // Ensure trail represents exactly 1.25 seconds via filter
         while(p.history.length > 0 && now - p.history[0].time > TRAIL_TIME) {
           p.history.shift();
         }
 
+        // SEGMENTED PATH RENDERING FOR WINDY-LIKE FADE
         if (masterAlpha > 0.01 && p.history.length > 0.15) {
           ctx.lineWidth = 1.8;
           for (let i = 1; i < p.history.length; i++) {
             let pt1 = p.history[i-1];
             let pt2 = p.history[i];
             let age = now - pt2.time; 
+            
+            // Your explicitly requested custom visual math:
             let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); 
             
             ctx.strokeStyle = `hsla(${p.color.h}, ${p.color.s}%, ${p.color.l}%, ${masterAlpha * trailAlpha})`;
@@ -143,6 +151,7 @@ export default function WindParticles({ wx }: { wx: any }) {
           }
         }
 
+        // Resets strictly past 1.9s or completely out of viewport bounds
         if (p.life >= MAX_LIFE || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
           initParticle(p);
           p.life = 0; 
@@ -154,11 +163,11 @@ export default function WindParticles({ wx }: { wx: any }) {
       animationId = requestAnimationFrame(draw);
     }
 
-    // THIS IS THE MAGIC FIX: It kills the background loop when you leave the dashboard
+    // FIX FOR NEXT.JS ROUTING: Cleanup animation when leaving the dashboard
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
     };
-  }, [wx]); // The effect safely restarts if weather data changes
+  }, [wx]); 
 
   return (
     <canvas 
