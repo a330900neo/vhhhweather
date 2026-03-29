@@ -70,14 +70,15 @@ export default function WindParticles({ wx }: { wx: any }) {
       return {
         x: Math.random() * w,
         y: Math.random() * h,
-        radius: 90 + Math.random() * 110, 
+        radius: 90 + Math.random() * 110, // Much larger radius!
         dx: Math.sin(moveAngle) * 40, 
         dy: -Math.cos(moveAngle) * 40, 
         life: 0,
-        maxLife: 3 + Math.random() * 4 
+        maxLife: 3 + Math.random() * 4 // Gusts last longer
       };
     }
 
+    // 8 Active Gust zones at all times for high frequency
     for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
     function initParticle(p: any = {}, spawnAngle: number = 0) {
@@ -88,7 +89,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.speed = p.baseSpeed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
-      p.offset = Math.random() * 1000; // Unique random seed for this specific particle
+      p.offset = Math.random() * 100; // Gives each particle a unique personality
 
       let rad = (spawnAngle + 180) * Math.PI / 180;
       p.dirX = Math.sin(rad);
@@ -159,32 +160,43 @@ export default function WindParticles({ wx }: { wx: any }) {
         let pxPerSec = p.speed * debugConfig.speedMultiplier; 
         let dx, dy;
 
-        // --- UPGRADED CHAOTIC VECTOR FIELDS ---
+        // --- VECTOR FIELDS ---
         if (debugConfig.dir === 'VRB') {
-          // 1. FULL UNCONSTRAINED VRB TURBULENCE (Individualized)
-          // Mixes the particle's unique offset with spatial noise to ensure they don't sync up
-          let noiseAngle = (
-            Math.sin(p.x * debugConfig.noiseScale + globalPhase + p.offset) + 
-            Math.cos(p.y * debugConfig.noiseScale - globalPhase + p.offset) +
-            Math.sin(p.offset * 0.1 + globalPhase * 0.5) // Adds an internal chaotic spin specific to this particle
-          ) * Math.PI; 
+          // 1. FULL UNCONSTRAINED VRB TURBULENCE (MULTI-OCTAVE NOISE)
+          let scale = debugConfig.noiseScale;
+          
+          // Layer 1: Large sweeping motion
+          let n1 = Math.sin(p.x * scale + globalPhase + p.offset * 0.05) + 
+                   Math.cos(p.y * scale + globalPhase);
+                   
+          // Layer 2: Smaller, tighter chaotic swirls moving in opposite phase
+          let n2 = Math.sin(p.y * scale * 2.5 - globalPhase) + 
+                   Math.cos(p.x * scale * 2.5 - globalPhase + p.offset * 0.05);
+
+          // Map to full 360 degree rotation
+          let noiseAngle = (n1 + n2 * 0.5) * Math.PI; 
           
           dx = Math.cos(noiseAngle) * pxPerSec * dt;
           dy = Math.sin(noiseAngle) * pxPerSec * dt;
 
         } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120) (Individualized)
+          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120) - ORGANIC WEAVING
           let diff = debugConfig.varTo - debugConfig.varFrom;
           if (diff < -180) diff += 360; 
           if (diff > 180) diff -= 360;
           let mid = debugConfig.varFrom + diff / 2;
 
-          // Generate a chaotic value between roughly -1 and +1
-          // 60% driven by the particle's own unique frequency, 40% driven by its position in space
-          let noiseVal = Math.sin(globalPhase * 0.8 + p.offset) * 0.6 + 
-                         Math.cos(p.x * debugConfig.noiseScale + p.y * debugConfig.noiseScale - globalPhase) * 0.4;
+          let scale = debugConfig.noiseScale;
           
-          // Map the noise so it stays strictly within the boundaries of varFrom and varTo
+          // Combine 3 different frequencies so the particles weave unpredictably
+          let n1 = Math.sin(p.x * scale + globalPhase + p.offset * 0.02);
+          let n2 = Math.cos(p.y * scale - globalPhase * 0.8);
+          let n3 = Math.sin((p.x + p.y) * scale * 1.5 + globalPhase * 1.2);
+          
+          // Normalize to roughly -1 to 1 bounds
+          let noiseVal = (n1 + n2 + n3) / 3;
+          
+          // Map the noise so it stays strictly between varFrom and varTo
           let localAngle = mid + (diff / 2) * noiseVal;
           let rad = (localAngle + 180) * Math.PI / 180;
           
@@ -245,4 +257,4 @@ export default function WindParticles({ wx }: { wx: any }) {
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-}g
+}
