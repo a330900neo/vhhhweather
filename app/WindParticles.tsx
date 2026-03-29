@@ -28,12 +28,12 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 0.45, 
+      swingSpeed: 2, 
       trailTime: 1250,
       maxLife: 1900,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.006 
+      noiseScale: 0.011
     };
     (window as any).windDebug = debugConfig;
 
