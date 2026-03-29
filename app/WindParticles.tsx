@@ -21,22 +21,32 @@ export default function WindParticles({ wx }: { wx: any }) {
     
     ctx.scale(dpr, dpr);
     
-    const dir = wx.dir;
-    const spd = wx.speed;
-    const gust = wx.gust;
-    const vFrom = wx.varFrom;
-    const vTo = wx.varTo;
-    
-    let numParticles = spd === 0 ? 0 : Math.min(250, 60 + (spd * 3));
-    if (dir === 'VRB' && spd > 0) numParticles = Math.max(100, numParticles);
+    // --- CONSOLE DEBUG OBJECT ---
+    // We bundle everything into this object so you can modify it from Chrome
+    const debugConfig = {
+      dir: wx.dir,
+      speed: wx.speed,
+      gust: wx.gust,
+      varFrom: wx.varFrom,
+      varTo: wx.varTo,
+      
+      // Internal config variables made editable
+      swingSpeed: 0.45, 
+      trailTime: 1250,
+      maxLife: 1900,
+      lineWidth: 3,
+      speedMultiplier: 5, // The * 5 multiplier you used for pxPerSec
+    };
+
+    // Attach to the window object so Chrome Console can see it
+    (window as any).windDebug = debugConfig;
+    console.log('🌬️ Wind Particle Debugger active! Type `windDebug` in the console to inspect/edit.');
+
+    let numParticles = debugConfig.speed === 0 ? 0 : Math.min(250, 60 + (debugConfig.speed * 3));
+    if (debugConfig.dir === 'VRB' && debugConfig.speed > 0) numParticles = Math.max(100, numParticles);
     
     const particles: any[] = [];
     let globalPhase = 0; 
-    
-    const MAX_LIFE = 1900; 
-    const TRAIL_TIME = 1250; 
-    
-    const SWING_SPEED = 0.45; 
 
     function getWindColor(s: number) {
       let h;
@@ -55,8 +65,8 @@ export default function WindParticles({ wx }: { wx: any }) {
     function initParticle(p: any = {}, spawnAngle: number = 0) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
-      p.life = Math.random() * MAX_LIFE; 
-      p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
+      p.life = Math.random() * debugConfig.maxLife; 
+      p.speed = debugConfig.speed + (debugConfig.gust > debugConfig.speed ? Math.random() * (debugConfig.gust - debugConfig.speed) : 0);
       p.offset = Math.random() * 100;
       p.color = getWindColor(p.speed);
       p.history = []; 
@@ -68,12 +78,12 @@ export default function WindParticles({ wx }: { wx: any }) {
       return p;
     }
 
-    let initialAngle = parseFloat(dir as string) || 0;
-    if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
-      let diff = vTo - vFrom;
+    let initialAngle = parseFloat(debugConfig.dir as string) || 0;
+    if (debugConfig.dir !== 'VRB' && debugConfig.varFrom !== null && debugConfig.varTo !== null) {
+      let diff = debugConfig.varTo - debugConfig.varFrom;
       if (diff < -180) diff += 360; 
       if (diff > 180) diff -= 360;
-      initialAngle = vFrom + diff / 2; 
+      initialAngle = debugConfig.varFrom + diff / 2; 
     }
 
     for (let i = 0; i < numParticles; i++) {
@@ -91,18 +101,17 @@ export default function WindParticles({ wx }: { wx: any }) {
       lastTime = now;
       
       ctx.clearRect(0, 0, w, h);
-      globalPhase += dt * SWING_SPEED; 
+      globalPhase += dt * debugConfig.swingSpeed; // uses debug value
       
-      let currentAngle = parseFloat(dir as string) || 0;
-      if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
-        let diff = vTo - vFrom;
+      let currentAngle = parseFloat(debugConfig.dir as string) || 0;
+      if (debugConfig.dir !== 'VRB' && debugConfig.varFrom !== null && debugConfig.varTo !== null) {
+        let diff = debugConfig.varTo - debugConfig.varFrom;
         if (diff < -180) diff += 360; 
         if (diff > 180) diff -= 360;
-        let mid = vFrom + diff / 2;
+        let mid = debugConfig.varFrom + diff / 2;
         currentAngle = mid + (diff / 2) * Math.sin(globalPhase);
       }
 
-      // FIX: Changed 'round' to 'butt' to prevent overlapping circles
       ctx.lineCap = 'butt'; 
       ctx.lineJoin = 'round';
       ctx.globalCompositeOperation = 'lighter'; 
@@ -117,13 +126,13 @@ export default function WindParticles({ wx }: { wx: any }) {
         
         let lifeFade = 1;
         if (p.life < 300) lifeFade = p.life / 300; 
-        else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); 
+        else if (p.life > debugConfig.maxLife - 400) lifeFade = Math.max(0, (debugConfig.maxLife - p.life) / 400); 
         
         let masterAlpha = Math.min(edgeFade, lifeFade);
-        let pxPerSec = p.speed * 5; 
+        let pxPerSec = p.speed * debugConfig.speedMultiplier; // uses debug value
         let dx, dy;
 
-        if (dir === 'VRB') {
+        if (debugConfig.dir === 'VRB') {
           let cx = w / 2; let cy = h / 2;
           let dxC = p.x - cx; let dyC = p.y - cy;
           let dist = Math.sqrt(dxC*dxC + dyC*dyC) || 1;
@@ -141,18 +150,18 @@ export default function WindParticles({ wx }: { wx: any }) {
         p.y += dy;
         p.history.push({x: p.x, y: p.y, time: now});
 
-        while(p.history.length > 0 && now - p.history[0].time > TRAIL_TIME) {
+        while(p.history.length > 0 && now - p.history[0].time > debugConfig.trailTime) {
           p.history.shift();
         }
 
         if (masterAlpha > 0.01 && p.history.length > 1) {
-          ctx.lineWidth = 3;
+          ctx.lineWidth = debugConfig.lineWidth; // uses debug value
           for (let i = 1; i < p.history.length; i++) {
             let pt1 = p.history[i-1];
             let pt2 = p.history[i];
             let age = now - pt2.time; 
             
-            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); 
+            let trailAlpha = Math.max(0, 1 - (age / (debugConfig.trailTime + 200)) - 0.55); 
             
             ctx.strokeStyle = `hsla(${p.color.h}, ${p.color.s}%, ${p.color.l}%, ${masterAlpha * trailAlpha})`;
             ctx.beginPath();
@@ -162,7 +171,7 @@ export default function WindParticles({ wx }: { wx: any }) {
           }
         }
 
-        if (p.life >= MAX_LIFE || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
+        if (p.life >= debugConfig.maxLife || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
           initParticle(p, currentAngle);
           p.life = 0; 
         }
@@ -175,6 +184,7 @@ export default function WindParticles({ wx }: { wx: any }) {
 
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
+      delete (window as any).windDebug; // cleanup memory leaks
     };
   }, [wx]); 
 
