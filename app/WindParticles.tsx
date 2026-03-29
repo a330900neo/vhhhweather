@@ -61,35 +61,36 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     // --- GUST ZONE ENGINE ---
-    // Creates floating areas of high wind speed
     function initGustZone() {
       // Gusts generally drift in the direction of the wind (or randomly if VRB)
       let moveAngle = Math.random() * Math.PI * 2;
       if (debugConfig.dir !== 'VRB') {
         moveAngle = (parseFloat(debugConfig.dir as string) + 180) * Math.PI / 180;
-        moveAngle += (Math.random() - 0.5) * 0.5; // Slight variance
+        moveAngle += (Math.random() - 0.5) * 0.8; // Wider variance for gust direction
       }
       
+      let driftSpeed = 40 + Math.random() * 50; // Increased speed so they sweep across more often
+
       return {
         x: Math.random() * w,
         y: Math.random() * h,
-        radius: 60 + Math.random() * 80, // Size of the gust zone
-        dx: Math.sin(moveAngle) * 30, // Drift speed X
-        dy: -Math.cos(moveAngle) * 30, // Drift speed Y
+        radius: 70 + Math.random() * 90, // Slightly larger zones
+        dx: Math.sin(moveAngle) * driftSpeed, 
+        dy: -Math.cos(moveAngle) * driftSpeed, 
         life: 0,
-        maxLife: 2 + Math.random() * 3 // Gust lasts 2 to 5 seconds
+        maxLife: 1.5 + Math.random() * 2.5 // Shorter life so they constantly respawn elsewhere
       };
     }
 
-    // Keep 2-4 gust zones active
-    for (let i = 0; i < 3; i++) gustZones.push(initGustZone());
+    // Increased from 3 to 8 active gust zones to make them appear much more often
+    for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
     function initParticle(p: any = {}, spawnAngle: number = 0) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
       p.life = Math.random() * debugConfig.maxLife; 
       p.baseSpeed = debugConfig.speed;
-      p.speed = p.baseSpeed; // Actual speed changes dynamically
+      p.speed = p.baseSpeed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
 
@@ -140,7 +141,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         g.life += dt;
         g.x += g.dx * dt;
         g.y += g.dy * dt;
-        if (g.life >= g.maxLife) Object.assign(g, initGustZone()); // Respawn gust
+        if (g.life >= g.maxLife) Object.assign(g, initGustZone()); 
       });
 
       ctx.lineCap = 'butt'; 
@@ -164,41 +165,38 @@ export default function WindParticles({ wx }: { wx: any }) {
         // --- DYNAMIC SPEED & COLOR (GUST LOGIC) ---
         let targetSpeed = debugConfig.speed;
         
-        // Check if particle is inside a gust zone
         if (debugConfig.gust > debugConfig.speed) {
           let maxGustInfluence = 0;
           gustZones.forEach(g => {
             let dist = Math.hypot(p.x - g.x, p.y - g.y);
             if (dist < g.radius) {
-              // Smooth spatial fade (stronger in center) and temporal fade (fades in/out over its life)
               let lifePhase = Math.sin((g.life / g.maxLife) * Math.PI); 
               let distPhase = 1 - (dist / g.radius);
               maxGustInfluence = Math.max(maxGustInfluence, lifePhase * distPhase);
             }
           });
-          // Blend base speed up to gust speed based on zone influence
           targetSpeed = debugConfig.speed + (debugConfig.gust - debugConfig.speed) * maxGustInfluence;
         }
 
-        // Smoothly accelerate/decelerate to the target speed
         p.speed += (targetSpeed - p.speed) * 10 * dt;
-        p.color = getWindColor(p.speed); // Update color dynamically!
+        p.color = getWindColor(p.speed); 
 
         let pxPerSec = p.speed * debugConfig.speedMultiplier; 
         let dx, dy;
 
-        // --- TURBULENCE (VECTOR FIELD) LOGIC ---
+        // --- UPGRADED TURBULENCE (VECTOR FIELD) LOGIC ---
         if (debugConfig.dir === 'VRB') {
-          // Creates a winding, shifting river of turbulence using math (Sine waves)
+          // Layered 3 sine waves at different phases and directions.
+          // This creates highly complex, evolving, organic turbulence instead of a static grid.
           let noiseAngle = (
             Math.sin(p.x * debugConfig.noiseScale + globalPhase) + 
-            Math.cos(p.y * debugConfig.noiseScale - globalPhase)
+            Math.cos(p.y * debugConfig.noiseScale - globalPhase * 0.8) +
+            Math.sin((p.x - p.y) * debugConfig.noiseScale * 0.5 + globalPhase * 1.2)
           ) * Math.PI; 
           
           dx = Math.cos(noiseAngle) * pxPerSec * dt;
           dy = Math.sin(noiseAngle) * pxPerSec * dt;
         } else {
-          // Standard directional wind
           dx = p.dirX * pxPerSec * dt;
           dy = p.dirY * pxPerSec * dt;
         }
@@ -218,7 +216,7 @@ export default function WindParticles({ wx }: { wx: any }) {
             let pt2 = p.history[i];
             let age = now - pt2.time; 
             
-            // Your explicitly requested custom visual math:
+            // Your custom visual math:
             let trailAlpha = Math.max(0, 1 - (age / (debugConfig.trailTime + 200)) - 0.55); 
             
             ctx.strokeStyle = `hsla(${p.color.h}, ${p.color.s}%, ${p.color.l}%, ${masterAlpha * trailAlpha})`;
