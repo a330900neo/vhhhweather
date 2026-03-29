@@ -36,7 +36,7 @@ export default function WindParticles({ wx }: { wx: any }) {
     const MAX_LIFE = 1900; 
     const TRAIL_TIME = 1250; 
     
-    const SWING_SPEED = 0.41; 
+    const SWING_SPEED = 0.45; 
 
     function getWindColor(s: number) {
       let h;
@@ -120,7 +120,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); 
         
         let masterAlpha = Math.min(edgeFade, lifeFade);
-        let pxPerSec = p.speed * 8; 
+        let pxPerSec = p.speed * 5; 
         let dx, dy;
 
         if (dir === 'VRB') {
