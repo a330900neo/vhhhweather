@@ -12,16 +12,13 @@ export default function WindParticles({ wx }: { wx: any }) {
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!ctx) return;
 
-    // --- HIGH-DPI (RETINA) RESOLUTION FIX ---
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.offsetWidth || 500;
     const h = canvas.offsetHeight || 500;
     
-    // Scale up the drawing buffer by device pixel ratio
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     
-    // Scale the context so our normal coordinates map to the new resolution
     ctx.scale(dpr, dpr);
     
     const dir = wx.dir;
@@ -36,13 +33,11 @@ export default function WindParticles({ wx }: { wx: any }) {
     const particles: any[] = [];
     let globalPhase = 0; 
     
-    const MAX_LIFE = 1900; // 1.9s lifetime constraint
-    const TRAIL_TIME = 1250; // 1.25s fading trail
+    const MAX_LIFE = 1900; 
+    const TRAIL_TIME = 1250; 
     
-    // --- CONFIGURABLE SWING SPEED ---
-    const SWING_SPEED = 0.39; // Higher = faster swinging between variable directions
+    const SWING_SPEED = 0.41; 
 
-    // DYNAMIC WIND COLOR MAPPING (HSL VERSION)
     function getWindColor(s: number) {
       let h;
       if (s <= 1) {
@@ -57,7 +52,6 @@ export default function WindParticles({ wx }: { wx: any }) {
       return { h, s: 100, l: 50 }; 
     }
 
-    // Pass the current angle when spawning or resetting a particle
     function initParticle(p: any = {}, spawnAngle: number = 0) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
@@ -67,7 +61,6 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.color = getWindColor(p.speed);
       p.history = []; 
 
-      // Lock this specific particle's direction vector based on the spawn angle
       let rad = (spawnAngle + 180) * Math.PI / 180;
       p.dirX = Math.sin(rad);
       p.dirY = -Math.cos(rad);
@@ -75,7 +68,6 @@ export default function WindParticles({ wx }: { wx: any }) {
       return p;
     }
 
-    // Get initial angle
     let initialAngle = parseFloat(dir as string) || 0;
     if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
       let diff = vTo - vFrom;
@@ -98,13 +90,9 @@ export default function WindParticles({ wx }: { wx: any }) {
       if (dt > 0.1) dt = 0.016; 
       lastTime = now;
       
-      // Full clear required for segmented fading path
       ctx.clearRect(0, 0, w, h);
-      
-      // Apply the user-configured swing speed
       globalPhase += dt * SWING_SPEED; 
       
-      // 1. Compute the current Global Angle for this frame
       let currentAngle = parseFloat(dir as string) || 0;
       if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
         let diff = vTo - vFrom;
@@ -114,20 +102,19 @@ export default function WindParticles({ wx }: { wx: any }) {
         currentAngle = mid + (diff / 2) * Math.sin(globalPhase);
       }
 
-      ctx.lineCap = 'round';
+      // FIX: Changed 'round' to 'butt' to prevent overlapping circles
+      ctx.lineCap = 'butt'; 
       ctx.lineJoin = 'round';
-      ctx.globalCompositeOperation = 'lighter'; // Neon blend effect
+      ctx.globalCompositeOperation = 'lighter'; 
 
       particles.forEach(p => {
         p.life += dt * 1000;
 
-        // SMOOTH EDGE FADE
         let margin = 45; 
         let distToEdgeX = Math.min(p.x, w - p.x);
         let distToEdgeY = Math.min(p.y, h - p.y);
         let edgeFade = Math.max(0, Math.min(1, Math.min(distToEdgeX, distToEdgeY) / margin));
         
-        // LIFECYCLE FADE
         let lifeFade = 1;
         if (p.life < 300) lifeFade = p.life / 300; 
         else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); 
@@ -137,7 +124,6 @@ export default function WindParticles({ wx }: { wx: any }) {
         let dx, dy;
 
         if (dir === 'VRB') {
-          // Keep turbulence for VRB intact
           let cx = w / 2; let cy = h / 2;
           let dxC = p.x - cx; let dyC = p.y - cy;
           let dist = Math.sqrt(dxC*dxC + dyC*dyC) || 1;
@@ -147,7 +133,6 @@ export default function WindParticles({ wx }: { wx: any }) {
           dy += Math.cos(p.offset + globalPhase) * 15;
           dx *= dt; dy *= dt;
         } else {
-          // Particles maintain their OWN direction, unaffected by immediate global phase
           dx = p.dirX * pxPerSec * dt;
           dy = p.dirY * pxPerSec * dt;
         }
@@ -156,12 +141,10 @@ export default function WindParticles({ wx }: { wx: any }) {
         p.y += dy;
         p.history.push({x: p.x, y: p.y, time: now});
 
-        // Ensure trail represents exactly 1.25 seconds via filter
         while(p.history.length > 0 && now - p.history[0].time > TRAIL_TIME) {
           p.history.shift();
         }
 
-        // SEGMENTED PATH RENDERING FOR WINDY-LIKE FADE
         if (masterAlpha > 0.01 && p.history.length > 1) {
           ctx.lineWidth = 3;
           for (let i = 1; i < p.history.length; i++) {
@@ -169,7 +152,7 @@ export default function WindParticles({ wx }: { wx: any }) {
             let pt2 = p.history[i];
             let age = now - pt2.time; 
             
-            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); // custom visual, dont change unless told
+            let trailAlpha = Math.max(0, 1 - (age / (TRAIL_TIME + 200)) - 0.55); 
             
             ctx.strokeStyle = `hsla(${p.color.h}, ${p.color.s}%, ${p.color.l}%, ${masterAlpha * trailAlpha})`;
             ctx.beginPath();
@@ -179,9 +162,7 @@ export default function WindParticles({ wx }: { wx: any }) {
           }
         }
 
-        // Resets strictly past 1.9s or completely out of viewport bounds
         if (p.life >= MAX_LIFE || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-          // New particles spawn with the NEW calculated current global angle
           initParticle(p, currentAngle);
           p.life = 0; 
         }
@@ -203,4 +184,4 @@ export default function WindParticles({ wx }: { wx: any }) {
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-          }
+}
