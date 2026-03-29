@@ -9,7 +9,7 @@ export default function WindParticles({ wx }: { wx: any }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    // FIX: Assert the type so TypeScript stops complaining inside the draw loop
+    // Assert the type so TypeScript stops complaining inside the draw loop
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!ctx) return;
 
@@ -30,6 +30,9 @@ export default function WindParticles({ wx }: { wx: any }) {
     
     const MAX_LIFE = 1900; // 1.9s lifetime constraint
     const TRAIL_TIME = 1250; // 1.25s fading trail
+    
+    // --- CONFIGURABLE SWING SPEED ---
+    const SWING_SPEED = 2.0; // Higher = faster swinging between variable directions
 
     // DYNAMIC WIND COLOR MAPPING (HSL VERSION)
     function getWindColor(s: number) {
@@ -46,7 +49,8 @@ export default function WindParticles({ wx }: { wx: any }) {
       return { h, s: 100, l: 50 }; // Locked at 100% saturation
     }
 
-    function initParticle(p: any = {}) {
+    // Pass the current angle when spawning or resetting a particle
+    function initParticle(p: any = {}, spawnAngle: number = 0) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
       p.life = Math.random() * MAX_LIFE; // Offset starts
@@ -54,11 +58,26 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.offset = Math.random() * 100;
       p.color = getWindColor(p.speed);
       p.history = []; // Array of {x, y, time}
+
+      // Lock this specific particle's direction vector based on the spawn angle
+      let rad = (spawnAngle + 180) * Math.PI / 180;
+      p.dirX = Math.sin(rad);
+      p.dirY = -Math.cos(rad);
+
       return p;
     }
 
+    // Get initial angle
+    let initialAngle = parseFloat(dir as string) || 0;
+    if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
+      let diff = vTo - vFrom;
+      if (diff < -180) diff += 360; 
+      if (diff > 180) diff -= 360;
+      initialAngle = vFrom + diff / 2; // Start in the middle
+    }
+
     for (let i = 0; i < numParticles; i++) {
-      particles.push(initParticle());
+      particles.push(initParticle({}, initialAngle));
     }
 
     let lastTime = performance.now();
@@ -73,10 +92,12 @@ export default function WindParticles({ wx }: { wx: any }) {
       
       // Full clear required for segmented fading path
       ctx.clearRect(0, 0, w, h);
-      globalPhase += dt * 2; 
       
+      // Apply the user-configured swing speed
+      globalPhase += dt * SWING_SPEED; 
+      
+      // 1. Compute the current Global Angle for this frame
       let currentAngle = parseFloat(dir as string) || 0;
-
       if (dir !== 'VRB' && vFrom !== null && vTo !== null) {
         let diff = vTo - vFrom;
         if (diff < -180) diff += 360; 
@@ -84,10 +105,6 @@ export default function WindParticles({ wx }: { wx: any }) {
         let mid = vFrom + diff / 2;
         currentAngle = mid + (diff / 2) * Math.sin(globalPhase);
       }
-
-      let rad = (currentAngle + 180) * Math.PI / 180;
-      let globalDx = Math.sin(rad);
-      let globalDy = -Math.cos(rad);
 
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
@@ -112,6 +129,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         let dx, dy;
 
         if (dir === 'VRB') {
+          // Keep turbulence for VRB intact
           let cx = w / 2; let cy = h / 2;
           let dxC = p.x - cx; let dyC = p.y - cy;
           let dist = Math.sqrt(dxC*dxC + dyC*dyC) || 1;
@@ -121,8 +139,9 @@ export default function WindParticles({ wx }: { wx: any }) {
           dy += Math.cos(p.offset + globalPhase) * 15;
           dx *= dt; dy *= dt;
         } else {
-          dx = globalDx * pxPerSec * dt;
-          dy = globalDy * pxPerSec * dt;
+          // Particles maintain their OWN direction, unaffected by immediate global phase
+          dx = p.dirX * pxPerSec * dt;
+          dy = p.dirY * pxPerSec * dt;
         }
         
         p.x += dx;
@@ -154,7 +173,8 @@ export default function WindParticles({ wx }: { wx: any }) {
 
         // Resets strictly past 1.9s or completely out of viewport bounds
         if (p.life >= MAX_LIFE || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-          initParticle(p);
+          // New particles spawn with the NEW calculated current global angle
+          initParticle(p, currentAngle);
           p.life = 0; 
         }
       });
