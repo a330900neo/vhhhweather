@@ -136,7 +136,7 @@ export default function WindParticles({ wx }: { wx: any }) {
 
         // SEGMENTED PATH RENDERING FOR WINDY-LIKE FADE
         if (masterAlpha > 0.01 && p.history.length > 1) {
-          ctx.lineWidth = 1.8;
+          ctx.lineWidth = 3;
           for (let i = 1; i < p.history.length; i++) {
             let pt1 = p.history[i-1];
             let pt2 = p.history[i];
