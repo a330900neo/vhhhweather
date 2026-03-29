@@ -28,12 +28,13 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 2, 
+      swingSpeed: 1.2, // Phase speed for the fluid evolving
       trailTime: 1250,
       maxLife: 1900,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.0045
+      noiseScale: 0.005, // Lower = wider, larger fluid vortices
+      fluidInertia: 2.5  // How "heavy" the fluid feels (lower = slower turning)
     };
     (window as any).windDebug = debugConfig;
 
@@ -59,7 +60,33 @@ export default function WindParticles({ wx }: { wx: any }) {
       return { h, s: 100, l: 50 }; 
     }
 
-    // --- UPGRADED GUST ZONE ENGINE ---
+    // --- TRUE FLUID MATH (CURL NOISE) ---
+    // Generates zero-divergence vector fields (perfect swirling vortices)
+    function getFluidVelocity(x: number, y: number, phase: number, scale: number) {
+      let k1 = scale;
+      let k2 = scale * 1.3;
+      let k3 = scale * 1.7;
+      
+      // Calculate derivatives of the potential field to create incompressible flow
+      let dx = Math.sin(x * k1 + phase) * -Math.sin(y * k2 - phase) * k2
+             + Math.cos((x - y) * k3 + phase) * -k3;
+             
+      let dy = -( Math.cos(x * k1 + phase) * k1 * Math.cos(y * k2 - phase)
+                + Math.cos((x - y) * k3 + phase) * k3 );
+                
+      // Normalize to extract pure direction
+      let len = Math.sqrt(dx*dx + dy*dy) || 1;
+      return { dx: dx/len, dy: dy/len };
+    }
+
+    // Generates smooth scalar noise for the constraint fields (e.g. 040V120)
+    function getScalarNoise(x: number, y: number, phase: number, scale: number) {
+      let n = Math.sin(x * scale + phase) * Math.cos(y * scale * 1.3 - phase)
+            + Math.sin((x - y) * scale * 1.7 + phase);
+      return n / 2.0; // Roughly returns values bounded between -1.0 and 1.0
+    }
+
+    // --- GUST ZONE ENGINE ---
     function initGustZone() {
       let moveAngle = Math.random() * Math.PI * 2;
       if (debugConfig.dir !== 'VRB') {
@@ -70,15 +97,14 @@ export default function WindParticles({ wx }: { wx: any }) {
       return {
         x: Math.random() * w,
         y: Math.random() * h,
-        radius: 90 + Math.random() * 110, // Much larger radius!
+        radius: 90 + Math.random() * 110, 
         dx: Math.sin(moveAngle) * 40, 
         dy: -Math.cos(moveAngle) * 40, 
         life: 0,
-        maxLife: 3 + Math.random() * 4 // Gusts last longer
+        maxLife: 3 + Math.random() * 4 
       };
     }
 
-    // 8 Active Gust zones at all times for high frequency
     for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
     function initParticle(p: any = {}, spawnAngle: number = 0) {
@@ -89,11 +115,15 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.speed = p.baseSpeed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
-      p.offset = Math.random() * 100; // Gives each particle a unique personality
 
       let rad = (spawnAngle + 180) * Math.PI / 180;
       p.dirX = Math.sin(rad);
       p.dirY = -Math.cos(rad);
+      
+      // Particles now have literal momentum (current velocity vectors)
+      let pxPerSec = p.speed * debugConfig.speedMultiplier;
+      p.vdx = p.dirX * pxPerSec;
+      p.vdy = p.dirY * pxPerSec;
 
       return p;
     }
@@ -158,26 +188,14 @@ export default function WindParticles({ wx }: { wx: any }) {
         p.color = getWindColor(p.speed); 
 
         let pxPerSec = p.speed * debugConfig.speedMultiplier; 
-        let dx, dy;
+        let targetVdx, targetVdy;
 
         // --- VECTOR FIELDS ---
         if (debugConfig.dir === 'VRB') {
-          // 1. FULL UNCONSTRAINED VRB TURBULENCE (MULTI-OCTAVE NOISE)
-          let scale = debugConfig.noiseScale;
-          
-          // Layer 1: Large sweeping motion
-          let n1 = Math.sin(p.x * scale + globalPhase + p.offset * 0.05) + 
-                   Math.cos(p.y * scale + globalPhase);
-                   
-          // Layer 2: Smaller, tighter chaotic swirls moving in opposite phase
-          let n2 = Math.sin(p.y * scale * 2.5 - globalPhase) + 
-                   Math.cos(p.x * scale * 2.5 - globalPhase + p.offset * 0.05);
-
-          // Map to full 360 degree rotation
-          let noiseAngle = (n1 + n2 * 0.5) * Math.PI; 
-          
-          dx = Math.cos(noiseAngle) * pxPerSec * dt;
-          dy = Math.sin(noiseAngle) * pxPerSec * dt;
+          // 1. FULL UNCONSTRAINED VRB TURBULENCE (CURL NOISE)
+          let flow = getFluidVelocity(p.x, p.y, globalPhase, debugConfig.noiseScale);
+          targetVdx = flow.dx * pxPerSec;
+          targetVdy = flow.dy * pxPerSec;
 
         } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
           // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120) - ORGANIC WEAVING
@@ -186,31 +204,28 @@ export default function WindParticles({ wx }: { wx: any }) {
           if (diff > 180) diff -= 360;
           let mid = debugConfig.varFrom + diff / 2;
 
-          let scale = debugConfig.noiseScale;
+          let noiseVal = getScalarNoise(p.x, p.y, globalPhase, debugConfig.noiseScale);
+          noiseVal = Math.max(-1, Math.min(1, noiseVal)); // Safely clamp
           
-          // Combine 3 different frequencies so the particles weave unpredictably
-          let n1 = Math.sin(p.x * scale + globalPhase + p.offset * 0.02);
-          let n2 = Math.cos(p.y * scale - globalPhase * 0.8);
-          let n3 = Math.sin((p.x + p.y) * scale * 1.5 + globalPhase * 1.2);
-          
-          // Normalize to roughly -1 to 1 bounds
-          let noiseVal = (n1 + n2 + n3) / 3;
-          
-          // Map the noise so it stays strictly between varFrom and varTo
           let localAngle = mid + (diff / 2) * noiseVal;
           let rad = (localAngle + 180) * Math.PI / 180;
           
-          dx = Math.sin(rad) * pxPerSec * dt;
-          dy = -Math.cos(rad) * pxPerSec * dt;
+          targetVdx = Math.sin(rad) * pxPerSec;
+          targetVdy = -Math.cos(rad) * pxPerSec;
 
         } else {
           // 3. STATIC / STEADY WIND
-          dx = p.dirX * pxPerSec * dt;
-          dy = p.dirY * pxPerSec * dt;
+          targetVdx = p.dirX * pxPerSec;
+          targetVdy = p.dirY * pxPerSec;
         }
         
-        p.x += dx;
-        p.y += dy;
+        // --- INERTIA (Momentum blending) ---
+        // This is what makes it look like real liquid flowing into the curves!
+        p.vdx += (targetVdx - p.vdx) * debugConfig.fluidInertia * dt;
+        p.vdy += (targetVdy - p.vdy) * debugConfig.fluidInertia * dt;
+
+        p.x += p.vdx * dt;
+        p.y += p.vdy * dt;
         p.history.push({x: p.x, y: p.y, time: now});
 
         while(p.history.length > 0 && now - p.history[0].time > debugConfig.trailTime) {
