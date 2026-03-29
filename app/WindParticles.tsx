@@ -9,12 +9,20 @@ export default function WindParticles({ wx }: { wx: any }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
-    // Assert the type so TypeScript stops complaining inside the draw loop
     const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
     if (!ctx) return;
 
-    const w = canvas.width; 
-    const h = canvas.height;
+    // --- HIGH-DPI (RETINA) RESOLUTION FIX ---
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.offsetWidth || 500;
+    const h = canvas.offsetHeight || 500;
+    
+    // Scale up the drawing buffer by device pixel ratio
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    
+    // Scale the context so our normal coordinates map to the new resolution
+    ctx.scale(dpr, dpr);
     
     const dir = wx.dir;
     const spd = wx.speed;
@@ -32,32 +40,32 @@ export default function WindParticles({ wx }: { wx: any }) {
     const TRAIL_TIME = 1250; // 1.25s fading trail
     
     // --- CONFIGURABLE SWING SPEED ---
-    const SWING_SPEED = 0.35; // Higher = faster swinging between variable directions
+    const SWING_SPEED = 0.39; // Higher = faster swinging between variable directions
 
     // DYNAMIC WIND COLOR MAPPING (HSL VERSION)
     function getWindColor(s: number) {
       let h;
       if (s <= 1) {
-        h = 260; // #5500ff equivalent Hue
+        h = 260; 
       } else if (s <= 18) {
         let t = (s - 1) / 17;
-        h = Math.floor(260 - t * (260 - 114)); // Interpolate to Green (114)
+        h = Math.floor(260 - t * (260 - 114)); 
       } else {
         let t = Math.min((s - 18) / 52, 1);
-        h = Math.floor(114 - t * 114); // Interpolate to Red (0)
+        h = Math.floor(114 - t * 114); 
       }
-      return { h, s: 100, l: 50 }; // Locked at 100% saturation
+      return { h, s: 100, l: 50 }; 
     }
 
     // Pass the current angle when spawning or resetting a particle
     function initParticle(p: any = {}, spawnAngle: number = 0) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
-      p.life = Math.random() * MAX_LIFE; // Offset starts
+      p.life = Math.random() * MAX_LIFE; 
       p.speed = spd + (gust > spd ? Math.random() * (gust - spd) : 0);
       p.offset = Math.random() * 100;
       p.color = getWindColor(p.speed);
-      p.history = []; // Array of {x, y, time}
+      p.history = []; 
 
       // Lock this specific particle's direction vector based on the spawn angle
       let rad = (spawnAngle + 180) * Math.PI / 180;
@@ -73,7 +81,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       let diff = vTo - vFrom;
       if (diff < -180) diff += 360; 
       if (diff > 180) diff -= 360;
-      initialAngle = vFrom + diff / 2; // Start in the middle
+      initialAngle = vFrom + diff / 2; 
     }
 
     for (let i = 0; i < numParticles; i++) {
@@ -81,13 +89,13 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     let lastTime = performance.now();
-    let animationId: number; // Stored so we can kill it on page change
+    let animationId: number; 
 
     function draw(now: number) {
       animationId = requestAnimationFrame(draw);
       
       let dt = (now - lastTime) / 1000;
-      if (dt > 0.1) dt = 0.016; // Safeguard if tab is backgrounded
+      if (dt > 0.1) dt = 0.016; 
       lastTime = now;
       
       // Full clear required for segmented fading path
@@ -121,8 +129,8 @@ export default function WindParticles({ wx }: { wx: any }) {
         
         // LIFECYCLE FADE
         let lifeFade = 1;
-        if (p.life < 300) lifeFade = p.life / 300; // Fade in 0.3s
-        else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); // Fade out last 0.4s
+        if (p.life < 300) lifeFade = p.life / 300; 
+        else if (p.life > MAX_LIFE - 400) lifeFade = Math.max(0, (MAX_LIFE - p.life) / 400); 
         
         let masterAlpha = Math.min(edgeFade, lifeFade);
         let pxPerSec = p.speed * 8; 
@@ -184,7 +192,6 @@ export default function WindParticles({ wx }: { wx: any }) {
       animationId = requestAnimationFrame(draw);
     }
 
-    // FIX FOR NEXT.JS ROUTING: Cleanup animation when leaving the dashboard
     return () => {
       if (animationId) cancelAnimationFrame(animationId);
     };
@@ -193,9 +200,7 @@ export default function WindParticles({ wx }: { wx: any }) {
   return (
     <canvas 
       ref={canvasRef} 
-      width="500" 
-      height="500" 
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-}
+          }
