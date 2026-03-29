@@ -226,10 +226,28 @@ export default async function Page() {
                 <div className="compass-layer">
                   <div style={{ position: 'absolute', top: '5px', left: '50%', transform: 'translateX(-50%)', fontSize: '12px', color: '#555' }}>N</div>
                   
+                  {/* --- 3-ARROW VARIANCE LOGIC --- */}
                   {wx.dir !== 'VRB' ? (
-                    <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.dir}deg)`, transition: 'transform 1s' }}>
-                      <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
-                    </div>
+                    <>
+                      {/* VAR FROM Arrow (Smaller, Blue) */}
+                      {wx.varFrom !== null && (
+                        <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.varFrom}deg)`, transition: 'transform 1s' }}>
+                          <div style={{ width: '0', height: '0', borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '12px solid rgba(147, 197, 253, 0.7)', margin: '-6px auto' }} />
+                        </div>
+                      )}
+                      
+                      {/* VAR TO Arrow (Smaller, Blue) */}
+                      {wx.varTo !== null && (
+                        <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.varTo}deg)`, transition: 'transform 1s' }}>
+                          <div style={{ width: '0', height: '0', borderLeft: '6px solid transparent', borderRight: '6px solid transparent', borderTop: '12px solid rgba(147, 197, 253, 0.7)', margin: '-6px auto' }} />
+                        </div>
+                      )}
+
+                      {/* MAIN DIR Arrow (Larger, White) */}
+                      <div style={{ position: 'absolute', width: '100%', height: '100%', transform: `rotate(${wx.dir}deg)`, transition: 'transform 1s', zIndex: 10 }}>
+                        <div style={{ width: '0', height: '0', borderLeft: '8px solid transparent', borderRight: '8px solid transparent', borderTop: '16px solid white', margin: '-8px auto' }} />
+                      </div>
+                    </>
                   ) : (
                     <div style={{ position: 'absolute', top: '22%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center' }}>
                       <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff' }}>VRB</div>
