@@ -32,7 +32,7 @@ export default function WindParticles({ wx }: { wx: any }) {
     const TRAIL_TIME = 1250; // 1.25s fading trail
     
     // --- CONFIGURABLE SWING SPEED ---
-    const SWING_SPEED = 2.0; // Higher = faster swinging between variable directions
+    const SWING_SPEED = 0.8; // Higher = faster swinging between variable directions
 
     // DYNAMIC WIND COLOR MAPPING (HSL VERSION)
     function getWindColor(s: number) {
