@@ -33,7 +33,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       maxLife: 1900,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.011
+      noiseScale: 0.0045
     };
     (window as any).windDebug = debugConfig;
 
