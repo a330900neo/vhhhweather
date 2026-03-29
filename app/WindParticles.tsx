@@ -28,15 +28,14 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 1.5, // Now acts as the flow speed of the vector field!
+      swingSpeed: 0.45, 
       trailTime: 1250,
       maxLife: 1900,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.01 // Controls how "tight" the VRB turbulence curves are
+      noiseScale: 0.006 
     };
     (window as any).windDebug = debugConfig;
-    console.log('🌬️ Wind Debugger active! Type `windDebug` in console.');
 
     // --- SETUP VARIABLES ---
     let numParticles = debugConfig.speed === 0 ? 0 : Math.min(250, 60 + (debugConfig.speed * 3));
@@ -60,26 +59,26 @@ export default function WindParticles({ wx }: { wx: any }) {
       return { h, s: 100, l: 50 }; 
     }
 
-    // --- GUST ZONE ENGINE ---
+    // --- UPGRADED GUST ZONE ENGINE ---
     function initGustZone() {
       let moveAngle = Math.random() * Math.PI * 2;
       if (debugConfig.dir !== 'VRB') {
         moveAngle = (parseFloat(debugConfig.dir as string) + 180) * Math.PI / 180;
-        moveAngle += (Math.random() - 0.5) * 0.5; // Slight variance
+        moveAngle += (Math.random() - 0.5) * 0.8; 
       }
       
       return {
         x: Math.random() * w,
         y: Math.random() * h,
-        radius: 80 + Math.random() * 100, // INCREASED: Larger gusts
-        dx: Math.sin(moveAngle) * 30, 
-        dy: -Math.cos(moveAngle) * 30, 
+        radius: 90 + Math.random() * 110, // Much larger radius!
+        dx: Math.sin(moveAngle) * 40, 
+        dy: -Math.cos(moveAngle) * 40, 
         life: 0,
-        maxLife: 1.5 + Math.random() * 3 // Faster cycling lifetimes
+        maxLife: 3 + Math.random() * 4 // Gusts last longer
       };
     }
 
-    // INCREASED: Keep 8 gust zones active instead of 3 for more frequent gusts
+    // 8 Active Gust zones at all times for high frequency
     for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
     function initParticle(p: any = {}, spawnAngle: number = 0) {
@@ -98,11 +97,8 @@ export default function WindParticles({ wx }: { wx: any }) {
       return p;
     }
 
-    // Base angle for standard wind
-    let baseAngle = parseFloat(debugConfig.dir as string) || 0;
-
     for (let i = 0; i < numParticles; i++) {
-      particles.push(initParticle({}, baseAngle));
+      particles.push(initParticle({}, parseFloat(debugConfig.dir as string) || 0));
     }
 
     let lastTime = performance.now();
@@ -117,13 +113,12 @@ export default function WindParticles({ wx }: { wx: any }) {
       
       ctx.clearRect(0, 0, w, h);
       globalPhase += dt * debugConfig.swingSpeed; 
-      
-      // Update Gust Zones
+
       gustZones.forEach(g => {
         g.life += dt;
         g.x += g.dx * dt;
         g.y += g.dy * dt;
-        if (g.life >= g.maxLife) Object.assign(g, initGustZone()); // Respawn gust
+        if (g.life >= g.maxLife) Object.assign(g, initGustZone()); 
       });
 
       ctx.lineCap = 'butt'; 
@@ -143,11 +138,8 @@ export default function WindParticles({ wx }: { wx: any }) {
         else if (p.life > debugConfig.maxLife - 400) lifeFade = Math.max(0, (debugConfig.maxLife - p.life) / 400); 
         
         let masterAlpha = Math.min(edgeFade, lifeFade);
-        
-        // --- DYNAMIC SPEED & COLOR (GUST LOGIC) ---
         let targetSpeed = debugConfig.speed;
         
-        // Check if particle is inside a gust zone
         if (debugConfig.gust > debugConfig.speed) {
           let maxGustInfluence = 0;
           gustZones.forEach(g => {
@@ -167,9 +159,9 @@ export default function WindParticles({ wx }: { wx: any }) {
         let pxPerSec = p.speed * debugConfig.speedMultiplier; 
         let dx, dy;
 
-        // --- TURBULENCE (VECTOR FIELD) LOGIC ---
+        // --- VECTOR FIELDS ---
         if (debugConfig.dir === 'VRB') {
-          // Wild unpredictable turbulence (Full 360 degrees)
+          // 1. FULL UNCONSTRAINED VRB TURBULENCE
           let noiseAngle = (
             Math.sin(p.x * debugConfig.noiseScale + globalPhase) + 
             Math.cos(p.y * debugConfig.noiseScale - globalPhase)
@@ -177,29 +169,29 @@ export default function WindParticles({ wx }: { wx: any }) {
           
           dx = Math.cos(noiseAngle) * pxPerSec * dt;
           dy = Math.sin(noiseAngle) * pxPerSec * dt;
-        } 
-        else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-          // BOUNDED VECTOR FIELD (e.g. 040V120)
+
+        } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
+          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120)
           let diff = debugConfig.varTo - debugConfig.varFrom;
           if (diff < -180) diff += 360; 
           if (diff > 180) diff -= 360;
           let mid = debugConfig.varFrom + diff / 2;
 
-          // Noise evaluates between roughly -1 and +1
-          let noise = (
+          // Generate noise between roughly -1 and 1
+          let noiseVal = (
             Math.sin(p.x * debugConfig.noiseScale + globalPhase) + 
             Math.cos(p.y * debugConfig.noiseScale - globalPhase)
           ) / 2;
-
-          // Map noise directly to the variance boundaries
-          let localAngle = mid + (diff / 2) * noise;
+          
+          // Map the noise so it stays strictly between varFrom and varTo
+          let localAngle = mid + (diff / 2) * noiseVal;
           let rad = (localAngle + 180) * Math.PI / 180;
-
+          
           dx = Math.sin(rad) * pxPerSec * dt;
           dy = -Math.cos(rad) * pxPerSec * dt;
-        } 
-        else {
-          // Standard directional wind
+
+        } else {
+          // 3. STATIC / STEADY WIND
           dx = p.dirX * pxPerSec * dt;
           dy = p.dirY * pxPerSec * dt;
         }
@@ -219,7 +211,6 @@ export default function WindParticles({ wx }: { wx: any }) {
             let pt2 = p.history[i];
             let age = now - pt2.time; 
             
-            // Your explicitly requested custom visual math:
             let trailAlpha = Math.max(0, 1 - (age / (debugConfig.trailTime + 200)) - 0.55); 
             
             ctx.strokeStyle = `hsla(${p.color.h}, ${p.color.s}%, ${p.color.l}%, ${masterAlpha * trailAlpha})`;
@@ -231,7 +222,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         }
 
         if (p.life >= debugConfig.maxLife || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-          initParticle(p, baseAngle);
+          initParticle(p, parseFloat(debugConfig.dir as string) || 0);
           p.life = 0; 
         }
       });
