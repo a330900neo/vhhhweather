@@ -70,15 +70,14 @@ export default function WindParticles({ wx }: { wx: any }) {
       return {
         x: Math.random() * w,
         y: Math.random() * h,
-        radius: 90 + Math.random() * 110, // Much larger radius!
+        radius: 90 + Math.random() * 110, 
         dx: Math.sin(moveAngle) * 40, 
         dy: -Math.cos(moveAngle) * 40, 
         life: 0,
-        maxLife: 3 + Math.random() * 4 // Gusts last longer
+        maxLife: 3 + Math.random() * 4 
       };
     }
 
-    // 8 Active Gust zones at all times for high frequency
     for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
     function initParticle(p: any = {}, spawnAngle: number = 0) {
@@ -89,6 +88,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.speed = p.baseSpeed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
+      p.offset = Math.random() * 1000; // Unique random seed for this specific particle
 
       let rad = (spawnAngle + 180) * Math.PI / 180;
       p.dirX = Math.sin(rad);
@@ -159,31 +159,32 @@ export default function WindParticles({ wx }: { wx: any }) {
         let pxPerSec = p.speed * debugConfig.speedMultiplier; 
         let dx, dy;
 
-        // --- VECTOR FIELDS ---
+        // --- UPGRADED CHAOTIC VECTOR FIELDS ---
         if (debugConfig.dir === 'VRB') {
-          // 1. FULL UNCONSTRAINED VRB TURBULENCE
+          // 1. FULL UNCONSTRAINED VRB TURBULENCE (Individualized)
+          // Mixes the particle's unique offset with spatial noise to ensure they don't sync up
           let noiseAngle = (
-            Math.sin(p.x * debugConfig.noiseScale + globalPhase) + 
-            Math.cos(p.y * debugConfig.noiseScale - globalPhase)
+            Math.sin(p.x * debugConfig.noiseScale + globalPhase + p.offset) + 
+            Math.cos(p.y * debugConfig.noiseScale - globalPhase + p.offset) +
+            Math.sin(p.offset * 0.1 + globalPhase * 0.5) // Adds an internal chaotic spin specific to this particle
           ) * Math.PI; 
           
           dx = Math.cos(noiseAngle) * pxPerSec * dt;
           dy = Math.sin(noiseAngle) * pxPerSec * dt;
 
         } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120)
+          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120) (Individualized)
           let diff = debugConfig.varTo - debugConfig.varFrom;
           if (diff < -180) diff += 360; 
           if (diff > 180) diff -= 360;
           let mid = debugConfig.varFrom + diff / 2;
 
-          // Generate noise between roughly -1 and 1
-          let noiseVal = (
-            Math.sin(p.x * debugConfig.noiseScale + globalPhase) + 
-            Math.cos(p.y * debugConfig.noiseScale - globalPhase)
-          ) / 2;
+          // Generate a chaotic value between roughly -1 and +1
+          // 60% driven by the particle's own unique frequency, 40% driven by its position in space
+          let noiseVal = Math.sin(globalPhase * 0.8 + p.offset) * 0.6 + 
+                         Math.cos(p.x * debugConfig.noiseScale + p.y * debugConfig.noiseScale - globalPhase) * 0.4;
           
-          // Map the noise so it stays strictly between varFrom and varTo
+          // Map the noise so it stays strictly within the boundaries of varFrom and varTo
           let localAngle = mid + (diff / 2) * noiseVal;
           let rad = (localAngle + 180) * Math.PI / 180;
           
@@ -244,4 +245,4 @@ export default function WindParticles({ wx }: { wx: any }) {
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-}
+}g
