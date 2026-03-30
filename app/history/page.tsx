@@ -291,6 +291,7 @@ export default function HistoryPage() {
                   <YAxis 
                     domain={dirDomain}
                     ticks={dirTicks}
+                    interval={0}
                     tickFormatter={(val) => {
                      // Reverse mathematically unrolled numbers (like 400, 720, or -50) back to 360 aviation heading format!
                      let v = Math.round(val) % 360;
