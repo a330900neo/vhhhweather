@@ -109,16 +109,16 @@ export default function HistoryPage() {
           return prev + diff;
         };
 
-        // FIX: A single, unified anchor forces Actual and Forecast onto the same visual plane
-        let lastRefDir: number | null = null; 
+        let lastActDir: number | null = null;
+        let lastTafDir: number | null = null;
 
         mergedList.forEach(p => {
-          // --- 1. ACTUAL DIR PROCESSOR ---
+          // --- ACTUAL DIR PROCESSOR ---
           if (typeof p.actDir === 'number') {
-            if (lastRefDir !== null) {
-              p.actDir = unwrap(p.actDir, lastRefDir);
+            if (lastActDir !== null) {
+              p.actDir = unwrap(p.actDir, lastActDir);
             }
-            lastRefDir = p.actDir; // Actual wind strongly anchors the chart's elevation
+            lastActDir = p.actDir;
 
             if (p.actVrbSpd !== undefined) p.actVrbDir = p.actDir;
 
@@ -128,44 +128,29 @@ export default function HistoryPage() {
               p.actVarTo = unwrap(p.actVarTo, p.actDir);
             }
           } else if (typeof p.actSpd === 'number') {
-            p.actDir = lastRefDir; // VRB scenario
+            p.actDir = lastActDir;
             p.actVrbSpd = p.actSpd;
             if (p.actDir !== null) p.actVrbDir = p.actDir;
           } else if (!p.isFuture) {
-            p.actDir = lastRefDir; // Carry forward dead-zones in the past
+            p.actDir = lastActDir;
           }
 
-          // --- 2. FORECAST DIR PROCESSOR ---
-          if (typeof p.tafDir === 'number') {
-            // Anchor forecast to the unified reference so it never floats into a parallel 360-plane
-            if (lastRefDir !== null) {
-              p.tafDir = unwrap(p.tafDir, lastRefDir);
-            }
-            
-            // If we are in the future (where actual wind doesn't exist), Forecast becomes the new anchor
-            if (p.isFuture || typeof p.actDir !== 'number') {
-              lastRefDir = p.tafDir;
-            }
-
-            if (p.tafVrbSpd !== undefined) p.tafVrbDir = p.tafDir;
-
-            // Make the forecast variance lines tightly hug the TAF direction line
-            if (typeof p.tafVarFrom === 'number' && typeof p.tafVarTo === 'number') {
-              p.tafVarFrom = unwrap(p.tafVarFrom, p.tafDir);
-              p.tafVarTo = unwrap(p.tafVarTo, p.tafDir);
-            }
-          } else if (typeof p.tafSpd === 'number') {
-            p.tafDir = lastRefDir; // VRB scenario
-            p.tafVrbSpd = p.tafSpd;
-            if (p.tafDir !== null) p.tafVrbDir = p.tafDir;
-          } else {
-            p.tafDir = lastRefDir; // Carry forward dead-zones
-          }
-        });
           // --- FORECAST DIR PROCESSOR ---
           if (typeof p.tafDir === 'number') {
-            // Anchor forecast to actual wind if available so the lines match up cleanly
-            let refDir = lastTafDir !== null ? lastTafDir : lastActDir;
+            
+            // FIX: Strong priority anchoring!
+            // 1. If Actual Dir exists right now, strictly align TAF to its unrolled plane to prevent detachment.
+            // 2. Otherwise (in the future), continue off its own last TAF position for smooth rolling.
+            // 3. Fallback to the very last Actual point.
+            let refDir: number | null = null;
+            if (typeof p.actDir === 'number') {
+              refDir = p.actDir;
+            } else if (lastTafDir !== null) {
+              refDir = lastTafDir;
+            } else if (lastActDir !== null) {
+              refDir = lastActDir;
+            }
+
             if (refDir !== null) {
               p.tafDir = unwrap(p.tafDir, refDir);
             }
