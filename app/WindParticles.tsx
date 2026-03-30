@@ -76,12 +76,6 @@ export default function WindParticles({ wx }: { wx: any }) {
       return { dx: dx/len, dy: dy/len };
     }
 
-    function getScalarNoise(x: number, y: number, phase: number, scale: number) {
-      let n = Math.sin(x * scale + phase) * Math.cos(y * scale * 1.3 - phase)
-            + Math.sin((x - y) * scale * 1.7 + phase);
-      return n / 2.0; 
-    }
-
     // --- GUST ZONE ENGINE ---
     function initGustZone() {
       let moveAngle = Math.random() * Math.PI * 2;
@@ -103,7 +97,6 @@ export default function WindParticles({ wx }: { wx: any }) {
 
     for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
-    // HELPER: Get a random angle within the variance bounds so they spawn fully spread out
     function getSpawnAngle() {
       let angle = parseFloat(debugConfig.dir as string) || 0;
       if (debugConfig.dir !== 'VRB' && debugConfig.varFrom !== null && debugConfig.varTo !== null) {
@@ -111,7 +104,6 @@ export default function WindParticles({ wx }: { wx: any }) {
         if (diff < -180) diff += 360; 
         if (diff > 180) diff -= 360;
         let mid = debugConfig.varFrom + diff / 2;
-        // Spread particles randomly between varFrom and varTo at birth
         angle = mid + (diff / 2) * (Math.random() * 2 - 1);
       }
       return angle;
@@ -125,7 +117,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.speed = p.baseSpeed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
-      p.offset = Math.random() * 100; // Used for personal weaving
+      p.offset = Math.random() * 100; 
 
       let spawnAngle = getSpawnAngle();
       let rad = (spawnAngle + 180) * Math.PI / 180;
@@ -209,21 +201,23 @@ export default function WindParticles({ wx }: { wx: any }) {
           targetVdy = flow.dy * pxPerSec;
 
         } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120) - AGGRESSIVE WEAVING
+          // 2. CONSTRAINED FLUID VECTOR FIELD (e.g., 040V120)
           let diff = debugConfig.varTo - debugConfig.varFrom;
           if (diff < -180) diff += 360; 
           if (diff > 180) diff -= 360;
           let mid = debugConfig.varFrom + diff / 2;
 
-          // Spatial map + personal particle frequency so they physically snake back and forth
-          let spatialNoise = getScalarNoise(p.x, p.y, globalPhase, debugConfig.noiseScale * 2);
-          let personalWander = Math.sin(p.life * 0.004 + p.offset); 
+          // Get the raw 360-degree fluid vortex flow
+          let flow = getFluidVelocity(p.x, p.y, globalPhase, debugConfig.noiseScale);
           
-          // Combine and push to extremes so it actively fills the bounds
-          let combinedNoise = (spatialNoise + personalWander) * 0.8; 
-          combinedNoise = Math.max(-1, Math.min(1, combinedNoise)); // Safely clamp
+          // Find the exact angle of this fluid current (-PI to PI)
+          let rawAngle = Math.atan2(flow.dy, flow.dx);
           
-          let localAngle = mid + (diff / 2) * combinedNoise;
+          // Map the raw 360-degree angle to a -1 to 1 multiplier
+          let noiseMultiplier = rawAngle / Math.PI;
+          
+          // "Squish" the entire vortex field so it perfectly fits inside the variance cone!
+          let localAngle = mid + (diff / 2) * noiseMultiplier;
           let rad = (localAngle + 180) * Math.PI / 180;
           
           targetVdx = Math.sin(rad) * pxPerSec;
@@ -265,7 +259,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         }
 
         if (p.life >= debugConfig.maxLife || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-          initParticle(p); // Now uses getSpawnAngle() inside
+          initParticle(p); 
           p.life = 0; 
         }
       });
@@ -287,4 +281,4 @@ export default function WindParticles({ wx }: { wx: any }) {
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-  }
+}
