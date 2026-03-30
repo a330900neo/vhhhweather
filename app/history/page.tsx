@@ -20,12 +20,10 @@ interface AeroHistory {
   raw?: string;
   dataType?: string; 
   isFuture: boolean;
-  // Custom VRB Markers
   actVrbSpd?: number | null;
   actVrbDir?: number | null;
   tafVrbSpd?: number | null;
   tafVrbDir?: number | null;
-  // Variable Bounds
   actVarFrom?: number | null;
   actVarTo?: number | null;
   tafVarFrom?: number | null;
@@ -36,6 +34,10 @@ export default function HistoryPage() {
   const [chartData, setChartData] = useState<AeroHistory[]>([]);
   const [logData, setLogData] = useState<AeroHistory[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Dynamic Y-Axis settings for the unrolled wind direction
+  const [dirTicks, setDirTicks] = useState<number[]>([0, 90, 180, 270, 360]);
+  const [dirDomain, setDirDomain] = useState<[number, number]>([0, 360]);
 
   useEffect(() => {
     const timeStamp = new Date().getTime(); 
@@ -47,7 +49,6 @@ export default function HistoryPage() {
 
         // Pre-parse and Filter Data
         json.forEach(p => {
-          // --- FILTER: Only allow METARs to supply "Actual" weather data ---
           if (p.dataType !== 'METAR') {
             p.actSpd = null;
             p.actDir = null;
@@ -59,7 +60,6 @@ export default function HistoryPage() {
             p.actVrbDir = null;
           }
 
-          // Parse variable wind boundaries
           if (p.raw && p.dataType === 'METAR') {
             const varyMatch = p.raw.match(/\b(\d{3})V(\d{3})\b/);
             if (varyMatch) {
@@ -76,7 +76,7 @@ export default function HistoryPage() {
           }
         });
 
-        // 1. Group by time to prevent Recharts from dot-stacking duplicate timestamps
+        // Group by time
         const grouped: Record<string, AeroHistory> = {};
         json.forEach(p => {
           if (!grouped[p.time]) {
@@ -100,37 +100,32 @@ export default function HistoryPage() {
 
         const mergedList = Object.values(grouped).sort((a, b) => a.timestamp - b.timestamp);
 
-        // 2. Forward Fill sparse gaps & Apply Continuous Angle unrolling
+        // --- INFINITY UNROLLING MATH ---
+        // Finds the shortest path to the next angle to prevent steep 360 lines
+        const unwrap = (curr: number, prev: number) => {
+          let diff = curr - prev;
+          while (diff > 180) diff -= 360;
+          while (diff <= -180) diff += 360;
+          return prev + diff;
+        };
+
         let lastActDir: number | null = null;
         let lastTafDir: number | null = null;
 
         mergedList.forEach(p => {
           // --- ACTUAL DIR PROCESSOR ---
           if (typeof p.actDir === 'number') {
-            let unrolledAct = p.actDir % 360;
-            if (unrolledAct < 0) unrolledAct += 360;
-            
-            // Keep actual line continuous
             if (lastActDir !== null) {
-                while (unrolledAct > lastActDir + 180) unrolledAct -= 360;
-                while (unrolledAct < lastActDir - 180) unrolledAct += 360;
+              p.actDir = unwrap(p.actDir, lastActDir);
             }
-            p.actDir = unrolledAct;
-            lastActDir = unrolledAct;
+            lastActDir = p.actDir;
 
             if (p.actVrbSpd !== undefined) p.actVrbDir = p.actDir;
 
+            // Make the variance lines tightly hug the main direction line
             if (typeof p.actVarFrom === 'number' && typeof p.actVarTo === 'number') {
-                let vFrom = p.actVarFrom % 360; if (vFrom < 0) vFrom += 360;
-                let vTo = p.actVarTo % 360; if (vTo < 0) vTo += 360;
-
-                while (vFrom > p.actDir + 180) vFrom -= 360;
-                while (vFrom < p.actDir - 180) vFrom += 360;
-                while (vTo > p.actDir + 180) vTo -= 360;
-                while (vTo < p.actDir - 180) vTo += 360;
-
-                p.actVarFrom = vFrom;
-                p.actVarTo = vTo;
+              p.actVarFrom = unwrap(p.actVarFrom, p.actDir);
+              p.actVarTo = unwrap(p.actVarTo, p.actDir);
             }
           } else if (typeof p.actSpd === 'number') {
             p.actDir = lastActDir;
@@ -142,36 +137,19 @@ export default function HistoryPage() {
 
           // --- FORECAST DIR PROCESSOR ---
           if (typeof p.tafDir === 'number') {
-            // Priority reference: 1) Match current Actual Dir, 2) Keep continuous Forecast, 3) Catch onto last Actual
-            let refDir = p.tafDir;
-            if (typeof p.actDir === 'number') refDir = p.actDir;
-            else if (lastTafDir !== null) refDir = lastTafDir;
-            else if (lastActDir !== null) refDir = lastActDir;
-
-            let unrolledTaf = p.tafDir % 360;
-            if (unrolledTaf < 0) unrolledTaf += 360;
-
+            // Anchor forecast to actual wind if available so the lines match up cleanly
+            let refDir = lastTafDir !== null ? lastTafDir : lastActDir;
             if (refDir !== null) {
-                while (unrolledTaf > refDir + 180) unrolledTaf -= 360;
-                while (unrolledTaf < refDir - 180) unrolledTaf += 360;
+              p.tafDir = unwrap(p.tafDir, refDir);
             }
-
-            p.tafDir = unrolledTaf;
-            lastTafDir = unrolledTaf;
+            lastTafDir = p.tafDir;
 
             if (p.tafVrbSpd !== undefined) p.tafVrbDir = p.tafDir;
 
+            // Make the forecast variance lines tightly hug the TAF direction line
             if (typeof p.tafVarFrom === 'number' && typeof p.tafVarTo === 'number') {
-                let vFrom = p.tafVarFrom % 360; if (vFrom < 0) vFrom += 360;
-                let vTo = p.tafVarTo % 360; if (vTo < 0) vTo += 360;
-
-                while (vFrom > p.tafDir + 180) vFrom -= 360;
-                while (vFrom < p.tafDir - 180) vFrom += 360;
-                while (vTo > p.tafDir + 180) vTo -= 360;
-                while (vTo < p.tafDir - 180) vTo += 360;
-
-                p.tafVarFrom = vFrom;
-                p.tafVarTo = vTo;
+              p.tafVarFrom = unwrap(p.tafVarFrom, p.tafDir);
+              p.tafVarTo = unwrap(p.tafVarTo, p.tafDir);
             }
           } else if (typeof p.tafSpd === 'number') {
             p.tafDir = lastTafDir;
@@ -182,29 +160,24 @@ export default function HistoryPage() {
           }
         });
 
-        // 3. Shift all direction data cleanly into the positive [0, 720] plane
-        let minD = Infinity;
-        mergedList.forEach(p => {
-           if (typeof p.actDir === 'number' && p.actDir < minD) minD = p.actDir;
-           if (typeof p.tafDir === 'number' && p.tafDir < minD) minD = p.tafDir;
-           if (typeof p.actVarFrom === 'number' && p.actVarFrom < minD) minD = p.actVarFrom;
-           if (typeof p.tafVarFrom === 'number' && p.tafVarFrom < minD) minD = p.tafVarFrom;
-        });
-
-        if (minD !== Infinity) {
-           let shift = 0;
-           while (minD + shift < 0) shift += 360; 
-           
-           mergedList.forEach(p => {
-              if (typeof p.actDir === 'number') p.actDir += shift;
-              if (typeof p.tafDir === 'number') p.tafDir += shift;
-              if (typeof p.actVrbDir === 'number') p.actVrbDir += shift;
-              if (typeof p.tafVrbDir === 'number') p.tafVrbDir += shift;
-              if (typeof p.actVarFrom === 'number') p.actVarFrom += shift;
-              if (typeof p.actVarTo === 'number') p.actVarTo += shift;
-              if (typeof p.tafVarFrom === 'number') p.tafVarFrom += shift;
-              if (typeof p.tafVarTo === 'number') p.tafVarTo += shift;
-           });
+        // --- CALCULATE DYNAMIC CHART BOUNDS ---
+        const allDirs = mergedList.flatMap(p => [
+          p.actDir, p.tafDir, p.actVarFrom, p.actVarTo, p.tafVarFrom, p.tafVarTo
+        ]).filter(v => v !== null && v !== undefined) as number[];
+        
+        if (allDirs.length > 0) {
+          const minD = Math.min(...allDirs);
+          const maxD = Math.max(...allDirs);
+          
+          // Generate custom ticks aligned to perfect 90-degree intervals covering the entire infinite sweep
+          const startTick = Math.floor(minD / 90) * 90 - 90;
+          const endTick = Math.ceil(maxD / 90) * 90 + 90;
+          const generatedTicks = [];
+          for(let t = startTick; t <= endTick; t += 90) {
+            generatedTicks.push(t);
+          }
+          setDirTicks(generatedTicks);
+          setDirDomain([startTick, endTick]);
         }
 
         setChartData(mergedList);
@@ -302,13 +275,15 @@ export default function HistoryPage() {
                   <CartesianGrid stroke="#2a3b5a" vertical={false} strokeDasharray="3 3" />
                   <XAxis dataKey="time" minTickGap={15} fontSize={10} stroke="#556" />
                   
+                  {/* Dynamic infinite unrolled Y-Axis */}
                   <YAxis 
-                    domain={[0, 720]}
-                    ticks={[0, 90, 180, 270, 360, 450, 540, 630, 720]}
+                    domain={dirDomain}
+                    ticks={dirTicks}
                     tickFormatter={(val) => {
-                     if (val === 360) return "360";
-                     if (val === 0 || val === 720) return "0";
-                     return (val % 360).toString(); 
+                     // Reverse mathematically unrolled numbers (like 400, 720, or -50) back to 360 aviation heading format!
+                     let v = Math.round(val) % 360;
+                     if (v <= 0) v += 360; 
+                     return v.toString().padStart(3, '0');
                     }} 
                     fontSize={10} 
                     stroke="#88a" 
@@ -319,8 +294,8 @@ export default function HistoryPage() {
                    formatter={(value: any, name: any) => {
                      if (typeof value === 'number' && typeof name === 'string' && (name.includes('Dir') || name.includes('Var'))) {
                        let v = Math.round(value) % 360;
-                       if (v < 0) v += 360;
-                       return [`${v === 0 ? 360 : v}°`, name];
+                       if (v <= 0) v += 360;
+                       return [`${v.toString().padStart(3, '0')}°`, name];
                      }
                      if (typeof name === 'string' && name.includes('VRB')) {
                        return ['Variable Wind', name];
@@ -394,7 +369,7 @@ export default function HistoryPage() {
                   <td style={{ color: typeColor, fontWeight: 'bold', whiteSpace: 'nowrap', paddingRight: '10px' }}>
                       {row.dataType || 'UNKNOWN'}
                   </td>
-                  <td style={{ color: '#ccc', fontSize: '9px', paddingRight: '10px' }}>{row.raw}</td>
+                  <td style={{ color: '#ccc', fontSize: '9px', padding: '12px 12px 12px 0' }}>{row.raw}</td>
                 </tr>
               );
             })}
