@@ -293,7 +293,6 @@ export default function HistoryPage() {
                     ticks={dirTicks}
                     interval={0}
                     tickFormatter={(val) => {
-                     // Reverse mathematically unrolled numbers (like 400, 720, or -50) back to 360 aviation heading format!
                      let v = Math.round(val) % 360;
                      if (v <= 0) v += 360; 
                      return v.toString().padStart(3, '0');
@@ -301,6 +300,17 @@ export default function HistoryPage() {
                     fontSize={10} 
                     stroke="#88a" 
                   />
+
+                  {/* Highlight ALL North (360°) lines across unwrapped planes */}
+                  {dirTicks.filter(t => t % 360 === 0).map(t => (
+                    <ReferenceLine 
+                      key={t} 
+                      y={t} 
+                      stroke="#ffffff" /* Bright white to stand out */
+                      strokeWidth={2} 
+                      opacity={0.8} 
+                    />
+                  ))}
                   
                   <Tooltip 
                    contentStyle={{ backgroundColor: '#0b162a', border: '1px solid #2a3b5a', fontSize: '10px' }} 
