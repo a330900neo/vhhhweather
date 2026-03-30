@@ -28,13 +28,13 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 1.6, // Phase speed for the fluid evolving
+      swingSpeed: 1.6, 
       trailTime: 1250,
       maxLife: 1900,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.005, // Lower = wider, larger fluid vortices
-      fluidInertia: 0.57  // How "heavy" the fluid feels (lower = slower turning)
+      noiseScale: 0.005, 
+      fluidInertia: 0.57  
     };
     (window as any).windDebug = debugConfig;
 
@@ -61,29 +61,25 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     // --- TRUE FLUID MATH (CURL NOISE) ---
-    // Generates zero-divergence vector fields (perfect swirling vortices)
     function getFluidVelocity(x: number, y: number, phase: number, scale: number) {
       let k1 = scale;
       let k2 = scale * 1.3;
       let k3 = scale * 1.7;
       
-      // Calculate derivatives of the potential field to create incompressible flow
       let dx = Math.sin(x * k1 + phase) * -Math.sin(y * k2 - phase) * k2
              + Math.cos((x - y) * k3 + phase) * -k3;
              
       let dy = -( Math.cos(x * k1 + phase) * k1 * Math.cos(y * k2 - phase)
                 + Math.cos((x - y) * k3 + phase) * k3 );
                 
-      // Normalize to extract pure direction
       let len = Math.sqrt(dx*dx + dy*dy) || 1;
       return { dx: dx/len, dy: dy/len };
     }
 
-    // Generates smooth scalar noise for the constraint fields (e.g. 040V120)
     function getScalarNoise(x: number, y: number, phase: number, scale: number) {
       let n = Math.sin(x * scale + phase) * Math.cos(y * scale * 1.3 - phase)
             + Math.sin((x - y) * scale * 1.7 + phase);
-      return n / 2.0; // Roughly returns values bounded between -1.0 and 1.0
+      return n / 2.0; 
     }
 
     // --- GUST ZONE ENGINE ---
@@ -107,7 +103,21 @@ export default function WindParticles({ wx }: { wx: any }) {
 
     for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
-    function initParticle(p: any = {}, spawnAngle: number = 0) {
+    // HELPER: Get a random angle within the variance bounds so they spawn fully spread out
+    function getSpawnAngle() {
+      let angle = parseFloat(debugConfig.dir as string) || 0;
+      if (debugConfig.dir !== 'VRB' && debugConfig.varFrom !== null && debugConfig.varTo !== null) {
+        let diff = debugConfig.varTo - debugConfig.varFrom;
+        if (diff < -180) diff += 360; 
+        if (diff > 180) diff -= 360;
+        let mid = debugConfig.varFrom + diff / 2;
+        // Spread particles randomly between varFrom and varTo at birth
+        angle = mid + (diff / 2) * (Math.random() * 2 - 1);
+      }
+      return angle;
+    }
+
+    function initParticle(p: any = {}) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
       p.life = Math.random() * debugConfig.maxLife; 
@@ -115,12 +125,13 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.speed = p.baseSpeed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
+      p.offset = Math.random() * 100; // Used for personal weaving
 
+      let spawnAngle = getSpawnAngle();
       let rad = (spawnAngle + 180) * Math.PI / 180;
       p.dirX = Math.sin(rad);
       p.dirY = -Math.cos(rad);
       
-      // Particles now have literal momentum (current velocity vectors)
       let pxPerSec = p.speed * debugConfig.speedMultiplier;
       p.vdx = p.dirX * pxPerSec;
       p.vdy = p.dirY * pxPerSec;
@@ -129,7 +140,7 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     for (let i = 0; i < numParticles; i++) {
-      particles.push(initParticle({}, parseFloat(debugConfig.dir as string) || 0));
+      particles.push(initParticle({}));
     }
 
     let lastTime = performance.now();
@@ -198,16 +209,21 @@ export default function WindParticles({ wx }: { wx: any }) {
           targetVdy = flow.dy * pxPerSec;
 
         } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120) - ORGANIC WEAVING
+          // 2. CONSTRAINED VECTOR FIELD (e.g., 040V120) - AGGRESSIVE WEAVING
           let diff = debugConfig.varTo - debugConfig.varFrom;
           if (diff < -180) diff += 360; 
           if (diff > 180) diff -= 360;
           let mid = debugConfig.varFrom + diff / 2;
 
-          let noiseVal = getScalarNoise(p.x, p.y, globalPhase, debugConfig.noiseScale);
-          noiseVal = Math.max(-1, Math.min(1, noiseVal)); // Safely clamp
+          // Spatial map + personal particle frequency so they physically snake back and forth
+          let spatialNoise = getScalarNoise(p.x, p.y, globalPhase, debugConfig.noiseScale * 2);
+          let personalWander = Math.sin(p.life * 0.004 + p.offset); 
           
-          let localAngle = mid + (diff / 2) * noiseVal;
+          // Combine and push to extremes so it actively fills the bounds
+          let combinedNoise = (spatialNoise + personalWander) * 0.8; 
+          combinedNoise = Math.max(-1, Math.min(1, combinedNoise)); // Safely clamp
+          
+          let localAngle = mid + (diff / 2) * combinedNoise;
           let rad = (localAngle + 180) * Math.PI / 180;
           
           targetVdx = Math.sin(rad) * pxPerSec;
@@ -220,7 +236,6 @@ export default function WindParticles({ wx }: { wx: any }) {
         }
         
         // --- INERTIA (Momentum blending) ---
-        // This is what makes it look like real liquid flowing into the curves!
         p.vdx += (targetVdx - p.vdx) * debugConfig.fluidInertia * dt;
         p.vdy += (targetVdy - p.vdy) * debugConfig.fluidInertia * dt;
 
@@ -250,7 +265,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         }
 
         if (p.life >= debugConfig.maxLife || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-          initParticle(p, parseFloat(debugConfig.dir as string) || 0);
+          initParticle(p); // Now uses getSpawnAngle() inside
           p.life = 0; 
         }
       });
@@ -272,4 +287,4 @@ export default function WindParticles({ wx }: { wx: any }) {
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-}
+  }
