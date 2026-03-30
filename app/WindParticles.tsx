@@ -28,13 +28,13 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 2.7, // Phase speed for the fluid evolving
+      swingSpeed: 1.6, // Phase speed for the fluid evolving
       trailTime: 1250,
       maxLife: 1900,
       lineWidth: 3,
       speedMultiplier: 5,
       noiseScale: 0.005, // Lower = wider, larger fluid vortices
-      fluidInertia: 1.7  // How "heavy" the fluid feels (lower = slower turning)
+      fluidInertia: 0.57  // How "heavy" the fluid feels (lower = slower turning)
     };
     (window as any).windDebug = debugConfig;
 
