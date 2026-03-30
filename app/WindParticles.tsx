@@ -61,6 +61,7 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     // --- TRUE FLUID MATH (CURL NOISE) ---
+    // Generates zero-divergence vector fields (perfect swirling vortices)
     function getFluidVelocity(x: number, y: number, phase: number, scale: number) {
       let k1 = scale;
       let k2 = scale * 1.3;
@@ -193,31 +194,39 @@ export default function WindParticles({ wx }: { wx: any }) {
         let pxPerSec = p.speed * debugConfig.speedMultiplier; 
         let targetVdx, targetVdy;
 
-        // --- VECTOR FIELDS ---
+        // --- DYNAMIC FLUID VECTOR FIELDS ---
         if (debugConfig.dir === 'VRB') {
-          // 1. FULL UNCONSTRAINED VRB TURBULENCE (CURL NOISE)
+          // 1. FULL UNCONSTRAINED VRB TURBULENCE
           let flow = getFluidVelocity(p.x, p.y, globalPhase, debugConfig.noiseScale);
           targetVdx = flow.dx * pxPerSec;
           targetVdy = flow.dy * pxPerSec;
 
         } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-          // 2. CONSTRAINED FLUID VECTOR FIELD (e.g., 040V120)
+          // 2. CONSTRAINED FLUID (e.g., 040V120) - Uses Curl Noise Projection!
           let diff = debugConfig.varTo - debugConfig.varFrom;
           if (diff < -180) diff += 360; 
           if (diff > 180) diff -= 360;
           let mid = debugConfig.varFrom + diff / 2;
 
-          // Get the raw 360-degree fluid vortex flow
-          let flow = getFluidVelocity(p.x, p.y, globalPhase, debugConfig.noiseScale);
+          // A) Get true fluid curl at this exact spatial coordinate
+          let flow = getFluidVelocity(p.x, p.y, globalPhase, debugConfig.noiseScale * 1.5);
+
+          // B) Calculate the Perpendicular direction of the main wind
+          let midRad = (mid + 180) * Math.PI / 180;
+          let perpDx = Math.cos(midRad); 
+          let perpDy = Math.sin(midRad);
+
+          // C) Project the fluid swirl onto the perpendicular axis to see how hard it pushes sideways
+          let fluidPush = (flow.dx * perpDx + flow.dy * perpDy); 
           
-          // Find the exact angle of this fluid current (-PI to PI)
-          let rawAngle = Math.atan2(flow.dy, flow.dx);
+          // D) Add a tiny bit of personal snaking so particles don't perfectly stack
+          let personalWander = Math.sin(p.life * 0.005 + p.offset) * 0.2;
           
-          // Map the raw 360-degree angle to a -1 to 1 multiplier
-          let noiseMultiplier = rawAngle / Math.PI;
+          let combinedPush = fluidPush + personalWander;
+          combinedPush = Math.max(-1, Math.min(1, combinedPush)); // Clamp to bounds safely
           
-          // "Squish" the entire vortex field so it perfectly fits inside the variance cone!
-          let localAngle = mid + (diff / 2) * noiseMultiplier;
+          // E) Map the fluid push strictly to the variance angles
+          let localAngle = mid + (diff / 2) * combinedPush;
           let rad = (localAngle + 180) * Math.PI / 180;
           
           targetVdx = Math.sin(rad) * pxPerSec;
@@ -259,7 +268,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         }
 
         if (p.life >= debugConfig.maxLife || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-          initParticle(p); 
+          initParticle(p);
           p.life = 0; 
         }
       });
