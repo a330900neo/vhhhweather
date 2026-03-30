@@ -34,7 +34,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       lineWidth: 3,
       speedMultiplier: 5,
       noiseScale: 0.005, 
-      fluidInertia: 0.7 // Increased slightly so they lock tightly into parallel rivers without sliding across each other
+      fluidInertia: 0.45 // Increased slightly so they lock tightly into parallel rivers without sliding across each other
     };
     (window as any).windDebug = debugConfig;
 
