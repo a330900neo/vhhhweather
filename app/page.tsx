@@ -1,8 +1,14 @@
 import { sql } from '@vercel/postgres';
 import Link from 'next/link';
 import WindParticles from './WindParticles'; // <-- IMPORT THE NEW COMPONENT HERE
+import { Metadata } from 'next'; // <-- 1. Import Metadata
 
-export const revalidate = 60;
+export const revalidate = 60; 
+// --- 2. ADD THIS EXPORT ---
+export const metadata: Metadata = {
+  title: 'VHHH weather',
+  description: 'Live weather and ATIS for Hong Kong International Airport (VHHH)',
+};
 
 // --- HELPERS ---
 function parseCloud(text: string) {
