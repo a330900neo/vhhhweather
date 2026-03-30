@@ -34,7 +34,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       lineWidth: 3,
       speedMultiplier: 5,
       noiseScale: 0.005, 
-      fluidInertia: 0.57  
+      fluidInertia: 2.0 // Increased slightly so they lock tightly into parallel rivers without sliding across each other
     };
     (window as any).windDebug = debugConfig;
 
@@ -61,7 +61,6 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     // --- TRUE FLUID MATH (CURL NOISE) ---
-    // Generates zero-divergence vector fields (perfect swirling vortices)
     function getFluidVelocity(x: number, y: number, phase: number, scale: number) {
       let k1 = scale;
       let k2 = scale * 1.3;
@@ -75,6 +74,44 @@ export default function WindParticles({ wx }: { wx: any }) {
                 
       let len = Math.sqrt(dx*dx + dy*dy) || 1;
       return { dx: dx/len, dy: dy/len };
+    }
+
+    function getScalarNoise(x: number, y: number, phase: number, scale: number) {
+      let n = Math.sin(x * scale + phase) * Math.cos(y * scale * 1.3 - phase)
+            + Math.sin((x - y) * scale * 1.7 + phase);
+      return n / 2.0; 
+    }
+
+    // --- UNIFIED VECTOR FIELD CALCULATION ---
+    // This guarantees particles at the same (x,y) ALWAYS point the exact same direction (No Crossing!)
+    function getVectorFieldTarget(x: number, y: number, speed: number, phase: number) {
+      let pxPerSec = speed * debugConfig.speedMultiplier;
+
+      if (debugConfig.dir === 'VRB') {
+        let flow = getFluidVelocity(x, y, phase, debugConfig.noiseScale);
+        return { vdx: flow.dx * pxPerSec, vdy: flow.dy * pxPerSec };
+
+      } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
+        let diff = debugConfig.varTo - debugConfig.varFrom;
+        if (diff < -180) diff += 360; 
+        if (diff > 180) diff -= 360;
+        let mid = debugConfig.varFrom + diff / 2;
+
+        // Pure spatial noise evaluated at this exact coordinate
+        let spatialNoise = getScalarNoise(x, y, phase, debugConfig.noiseScale * 1.5);
+        
+        // Multiply by 1.5 to ensure the wind hits the visual outer boundary arrows, then safely clamp
+        let combinedPush = Math.max(-1, Math.min(1, spatialNoise * 1.5)); 
+        
+        let localAngle = mid + (diff / 2) * combinedPush;
+        let rad = (localAngle + 180) * Math.PI / 180;
+        
+        return { vdx: Math.sin(rad) * pxPerSec, vdy: -Math.cos(rad) * pxPerSec };
+
+      } else {
+        let rad = (parseFloat(debugConfig.dir as string) + 180) * Math.PI / 180;
+        return { vdx: Math.sin(rad) * pxPerSec, vdy: -Math.cos(rad) * pxPerSec };
+      }
     }
 
     // --- GUST ZONE ENGINE ---
@@ -98,36 +135,18 @@ export default function WindParticles({ wx }: { wx: any }) {
 
     for (let i = 0; i < 8; i++) gustZones.push(initGustZone());
 
-    function getSpawnAngle() {
-      let angle = parseFloat(debugConfig.dir as string) || 0;
-      if (debugConfig.dir !== 'VRB' && debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-        let diff = debugConfig.varTo - debugConfig.varFrom;
-        if (diff < -180) diff += 360; 
-        if (diff > 180) diff -= 360;
-        let mid = debugConfig.varFrom + diff / 2;
-        angle = mid + (diff / 2) * (Math.random() * 2 - 1);
-      }
-      return angle;
-    }
-
     function initParticle(p: any = {}) {
       p.x = Math.random() * w; 
       p.y = Math.random() * h;
       p.life = Math.random() * debugConfig.maxLife; 
-      p.baseSpeed = debugConfig.speed;
-      p.speed = p.baseSpeed; 
+      p.speed = debugConfig.speed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
-      p.offset = Math.random() * 100; 
 
-      let spawnAngle = getSpawnAngle();
-      let rad = (spawnAngle + 180) * Math.PI / 180;
-      p.dirX = Math.sin(rad);
-      p.dirY = -Math.cos(rad);
-      
-      let pxPerSec = p.speed * debugConfig.speedMultiplier;
-      p.vdx = p.dirX * pxPerSec;
-      p.vdy = p.dirY * pxPerSec;
+      // Initialize perfectly locked into the spatial vector field at spawn to avoid early crossing
+      let target = getVectorFieldTarget(p.x, p.y, p.speed, globalPhase);
+      p.vdx = target.vdx;
+      p.vdy = target.vdy;
 
       return p;
     }
@@ -175,6 +194,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         let masterAlpha = Math.min(edgeFade, lifeFade);
         let targetSpeed = debugConfig.speed;
         
+        // Calculate Gust Influcence
         if (debugConfig.gust > debugConfig.speed) {
           let maxGustInfluence = 0;
           gustZones.forEach(g => {
@@ -191,56 +211,12 @@ export default function WindParticles({ wx }: { wx: any }) {
         p.speed += (targetSpeed - p.speed) * 10 * dt;
         p.color = getWindColor(p.speed); 
 
-        let pxPerSec = p.speed * debugConfig.speedMultiplier; 
-        let targetVdx, targetVdy;
-
-        // --- DYNAMIC FLUID VECTOR FIELDS ---
-        if (debugConfig.dir === 'VRB') {
-          // 1. FULL UNCONSTRAINED VRB TURBULENCE
-          let flow = getFluidVelocity(p.x, p.y, globalPhase, debugConfig.noiseScale);
-          targetVdx = flow.dx * pxPerSec;
-          targetVdy = flow.dy * pxPerSec;
-
-        } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-          // 2. CONSTRAINED FLUID (e.g., 040V120) - Uses Curl Noise Projection!
-          let diff = debugConfig.varTo - debugConfig.varFrom;
-          if (diff < -180) diff += 360; 
-          if (diff > 180) diff -= 360;
-          let mid = debugConfig.varFrom + diff / 2;
-
-          // A) Get true fluid curl at this exact spatial coordinate
-          let flow = getFluidVelocity(p.x, p.y, globalPhase, debugConfig.noiseScale * 1.5);
-
-          // B) Calculate the Perpendicular direction of the main wind
-          let midRad = (mid + 180) * Math.PI / 180;
-          let perpDx = Math.cos(midRad); 
-          let perpDy = Math.sin(midRad);
-
-          // C) Project the fluid swirl onto the perpendicular axis to see how hard it pushes sideways
-          let fluidPush = (flow.dx * perpDx + flow.dy * perpDy); 
-          
-          // D) Add a tiny bit of personal snaking so particles don't perfectly stack
-          let personalWander = Math.sin(p.life * 0.005 + p.offset) * 0.2;
-          
-          let combinedPush = fluidPush + personalWander;
-          combinedPush = Math.max(-1, Math.min(1, combinedPush)); // Clamp to bounds safely
-          
-          // E) Map the fluid push strictly to the variance angles
-          let localAngle = mid + (diff / 2) * combinedPush;
-          let rad = (localAngle + 180) * Math.PI / 180;
-          
-          targetVdx = Math.sin(rad) * pxPerSec;
-          targetVdy = -Math.cos(rad) * pxPerSec;
-
-        } else {
-          // 3. STATIC / STEADY WIND
-          targetVdx = p.dirX * pxPerSec;
-          targetVdy = p.dirY * pxPerSec;
-        }
+        // Get the perfect non-crossing vector direction for this exact spatial coordinate
+        let target = getVectorFieldTarget(p.x, p.y, p.speed, globalPhase);
         
-        // --- INERTIA (Momentum blending) ---
-        p.vdx += (targetVdx - p.vdx) * debugConfig.fluidInertia * dt;
-        p.vdy += (targetVdy - p.vdy) * debugConfig.fluidInertia * dt;
+        // Smoothly steer towards the target vector
+        p.vdx += (target.vdx - p.vdx) * debugConfig.fluidInertia * dt;
+        p.vdy += (target.vdy - p.vdy) * debugConfig.fluidInertia * dt;
 
         p.x += p.vdx * dt;
         p.y += p.vdy * dt;
@@ -290,4 +266,4 @@ export default function WindParticles({ wx }: { wx: any }) {
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-}
+            }
