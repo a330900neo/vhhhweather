@@ -28,13 +28,13 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 0.3,     // REDUCED: Makes the turbulence evolve slower / react less frantically.
+      swingSpeed: 1.1, 
       trailTime: 1250,
       maxLife: 2400,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.0015,  // REDUCED: Lowers the frequency, making the 'space' feel much larger and rivers wider.
-      physicsSteps: 3      // NEW: Simulates multiple physics ticks per visual frame for ultra-precise calculation.
+      noiseScale: 0.005
+      // fluidInertia removed! Particles will now perfectly trace the vector field.
     };
     (window as any).windDebug = debugConfig;
 
@@ -83,6 +83,8 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     // --- UNIFIED VECTOR FIELD CALCULATION ---
+    // Now returns ONLY a normalized direction {dx, dy}. 
+    // Speed is applied later to ensure lines never cross!
     function getVectorFieldTarget(x: number, y: number, phase: number) {
       if (debugConfig.dir === 'VRB') {
         let flow = getFluidVelocity(x, y, phase, debugConfig.noiseScale);
@@ -137,6 +139,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.color = getWindColor(p.speed);
       p.history = []; 
 
+      // Initialize perfectly locked into the spatial vector field
       let targetDir = getVectorFieldTarget(p.x, p.y, globalPhase);
       p.vdx = targetDir.dx * p.speed * debugConfig.speedMultiplier;
       p.vdy = targetDir.dy * p.speed * debugConfig.speedMultiplier;
@@ -159,55 +162,21 @@ export default function WindParticles({ wx }: { wx: any }) {
       lastTime = now;
       
       ctx.clearRect(0, 0, w, h);
+      globalPhase += dt * debugConfig.swingSpeed; 
 
-      const subDt = dt / debugConfig.physicsSteps;
+      gustZones.forEach(g => {
+        g.life += dt;
+        g.x += g.dx * dt;
+        g.y += g.dy * dt;
+        if (g.life >= g.maxLife) Object.assign(g, initGustZone()); 
+      });
 
-      // --- 1. HIGH FREQUENCY PHYSICS LOOP ---
-      for (let step = 0; step < debugConfig.physicsSteps; step++) {
-        globalPhase += subDt * debugConfig.swingSpeed; 
-
-        gustZones.forEach(g => {
-          g.life += subDt;
-          g.x += g.dx * subDt;
-          g.y += g.dy * subDt;
-          if (g.life >= g.maxLife) Object.assign(g, initGustZone()); 
-        });
-
-        particles.forEach(p => {
-          p.life += subDt * 1000;
-          let targetSpeed = debugConfig.speed;
-          
-          if (debugConfig.gust > debugConfig.speed) {
-            let maxGustInfluence = 0;
-            gustZones.forEach(g => {
-              let dist = Math.hypot(p.x - g.x, p.y - g.y);
-              if (dist < g.radius) {
-                let lifePhase = Math.sin((g.life / g.maxLife) * Math.PI); 
-                let distPhase = 1 - (dist / g.radius);
-                maxGustInfluence = Math.max(maxGustInfluence, lifePhase * distPhase);
-              }
-            });
-            targetSpeed = debugConfig.speed + (debugConfig.gust - debugConfig.speed) * maxGustInfluence;
-          }
-
-          p.speed += (targetSpeed - p.speed) * 10 * subDt;
-
-          let targetDir = getVectorFieldTarget(p.x, p.y, globalPhase);
-          p.vdx = targetDir.dx * p.speed * debugConfig.speedMultiplier;
-          p.vdy = targetDir.dy * p.speed * debugConfig.speedMultiplier;
-
-          p.x += p.vdx * subDt;
-          p.y += p.vdy * subDt;
-        });
-      }
-
-      // --- 2. RENDER LOOP ---
       ctx.lineCap = 'butt'; 
       ctx.lineJoin = 'round';
       ctx.globalCompositeOperation = 'lighter'; 
 
       particles.forEach(p => {
-        p.color = getWindColor(p.speed); 
+        p.life += dt * 1000;
 
         let margin = 45; 
         let distToEdgeX = Math.min(p.x, w - p.x);
@@ -219,12 +188,38 @@ export default function WindParticles({ wx }: { wx: any }) {
         else if (p.life > debugConfig.maxLife - 400) lifeFade = Math.max(0, (debugConfig.maxLife - p.life) / 400); 
         
         let masterAlpha = Math.min(edgeFade, lifeFade);
-
-        // OPTIMIZATION: Only record a path if the particle actually moved a decent distance
-        let lastPt = p.history[p.history.length - 1];
-        if (!lastPt || Math.hypot(p.x - lastPt.x, p.y - lastPt.y) > 2.5) {
-          p.history.push({x: p.x, y: p.y, time: now});
+        let targetSpeed = debugConfig.speed;
+        
+        // Calculate Gust Influence
+        if (debugConfig.gust > debugConfig.speed) {
+          let maxGustInfluence = 0;
+          gustZones.forEach(g => {
+            let dist = Math.hypot(p.x - g.x, p.y - g.y);
+            if (dist < g.radius) {
+              let lifePhase = Math.sin((g.life / g.maxLife) * Math.PI); 
+              let distPhase = 1 - (dist / g.radius);
+              maxGustInfluence = Math.max(maxGustInfluence, lifePhase * distPhase);
+            }
+          });
+          targetSpeed = debugConfig.speed + (debugConfig.gust - debugConfig.speed) * maxGustInfluence;
         }
+
+        // Smoothly adjust the SPEED (but not the direction)
+        p.speed += (targetSpeed - p.speed) * 10 * dt;
+        p.color = getWindColor(p.speed); 
+
+        // --- FLUID ADVECTION ---
+        // Get the pure, unified directional vector for this exact spatial coordinate
+        let targetDir = getVectorFieldTarget(p.x, p.y, globalPhase);
+        
+        // Instantly align direction, eliminating all crossing!
+        p.vdx = targetDir.dx * p.speed * debugConfig.speedMultiplier;
+        p.vdy = targetDir.dy * p.speed * debugConfig.speedMultiplier;
+
+        p.x += p.vdx * dt;
+        p.y += p.vdy * dt;
+        
+        p.history.push({x: p.x, y: p.y, time: now});
 
         while(p.history.length > 0 && now - p.history[0].time > debugConfig.trailTime) {
           p.history.shift();
