@@ -28,13 +28,19 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 1.6, 
+      
+      // --- FLUID NOISE CONTROLS ---
+      // swingSpeed: Controls the RATE OF CHANGE (how fast the fluid morphs/boils over time)
+      swingSpeed: wx.swingSpeed !== undefined ? wx.swingSpeed : 1.6, 
+      
+      // noiseScale: Controls the SPATIAL SIZE of the fluid waves (higher = tighter ripples, lower = wide rivers)
+      noiseScale: wx.noiseScale !== undefined ? wx.noiseScale : 0.005, 
+
       trailTime: 1250,
       maxLife: 2400,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.005, 
-      fluidInertia: 0.37 // Increased slightly so they lock tightly into parallel rivers without sliding across each other
+      fluidInertia: 0.37 // Locks tightly into parallel rivers without sliding across each other
     };
     (window as any).windDebug = debugConfig;
 
@@ -83,7 +89,6 @@ export default function WindParticles({ wx }: { wx: any }) {
     }
 
     // --- UNIFIED VECTOR FIELD CALCULATION ---
-    // This guarantees particles at the same (x,y) ALWAYS point the exact same direction (No Crossing!)
     function getVectorFieldTarget(x: number, y: number, speed: number, phase: number) {
       let pxPerSec = speed * debugConfig.speedMultiplier;
 
@@ -97,10 +102,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         if (diff > 180) diff -= 360;
         let mid = debugConfig.varFrom + diff / 2;
 
-        // Pure spatial noise evaluated at this exact coordinate
         let spatialNoise = getScalarNoise(x, y, phase, debugConfig.noiseScale * 1.5);
-        
-        // Multiply by 1.5 to ensure the wind hits the visual outer boundary arrows, then safely clamp
         let combinedPush = Math.max(-1, Math.min(1, spatialNoise * 1.5)); 
         
         let localAngle = mid + (diff / 2) * combinedPush;
@@ -143,7 +145,6 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.color = getWindColor(p.speed);
       p.history = []; 
 
-      // Initialize perfectly locked into the spatial vector field at spawn to avoid early crossing
       let target = getVectorFieldTarget(p.x, p.y, p.speed, globalPhase);
       p.vdx = target.vdx;
       p.vdy = target.vdy;
@@ -166,6 +167,8 @@ export default function WindParticles({ wx }: { wx: any }) {
       lastTime = now;
       
       ctx.clearRect(0, 0, w, h);
+      
+      // THIS is where the fluid morphs over time based on your swingSpeed
       globalPhase += dt * debugConfig.swingSpeed; 
 
       gustZones.forEach(g => {
@@ -194,7 +197,6 @@ export default function WindParticles({ wx }: { wx: any }) {
         let masterAlpha = Math.min(edgeFade, lifeFade);
         let targetSpeed = debugConfig.speed;
         
-        // Calculate Gust Influcence
         if (debugConfig.gust > debugConfig.speed) {
           let maxGustInfluence = 0;
           gustZones.forEach(g => {
@@ -211,10 +213,8 @@ export default function WindParticles({ wx }: { wx: any }) {
         p.speed += (targetSpeed - p.speed) * 10 * dt;
         p.color = getWindColor(p.speed); 
 
-        // Get the perfect non-crossing vector direction for this exact spatial coordinate
         let target = getVectorFieldTarget(p.x, p.y, p.speed, globalPhase);
         
-        // Smoothly steer towards the target vector
         p.vdx += (target.vdx - p.vdx) * debugConfig.fluidInertia * dt;
         p.vdy += (target.vdy - p.vdy) * debugConfig.fluidInertia * dt;
 
@@ -266,4 +266,4 @@ export default function WindParticles({ wx }: { wx: any }) {
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'none', background: '#0b162a' }} 
     />
   );
-            }
+        }
