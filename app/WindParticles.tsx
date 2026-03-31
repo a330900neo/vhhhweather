@@ -28,14 +28,13 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
-      swingSpeed: 1.6, 
+      swingSpeed: 0.3,     // REDUCED: Makes the turbulence evolve slower / react less frantically.
       trailTime: 1250,
       maxLife: 2400,
       lineWidth: 3,
       speedMultiplier: 5,
-      noiseScale: 0.005,
-      physicsSteps: 3,       // UPGRADE 1: Simulates 3 micro-ticks per visual frame
-      historyInterval: 35    // UPGRADE 2: Only records trail points every 35ms to save FPS
+      noiseScale: 0.0015,  // REDUCED: Lowers the frequency, making the 'space' feel much larger and rivers wider.
+      physicsSteps: 3      // NEW: Simulates multiple physics ticks per visual frame for ultra-precise calculation.
     };
     (window as any).windDebug = debugConfig;
 
@@ -83,6 +82,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       return n / 2.0; 
     }
 
+    // --- UNIFIED VECTOR FIELD CALCULATION ---
     function getVectorFieldTarget(x: number, y: number, phase: number) {
       if (debugConfig.dir === 'VRB') {
         let flow = getFluidVelocity(x, y, phase, debugConfig.noiseScale);
@@ -108,6 +108,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       }
     }
 
+    // --- GUST ZONE ENGINE ---
     function initGustZone() {
       let moveAngle = Math.random() * Math.PI * 2;
       if (debugConfig.dir !== 'VRB') {
@@ -135,7 +136,6 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.speed = debugConfig.speed; 
       p.color = getWindColor(p.speed);
       p.history = []; 
-      p.lastHistoryTime = 0; // Track when we last dropped a visual breadcrumb
 
       let targetDir = getVectorFieldTarget(p.x, p.y, globalPhase);
       p.vdx = targetDir.dx * p.speed * debugConfig.speedMultiplier;
@@ -158,28 +158,23 @@ export default function WindParticles({ wx }: { wx: any }) {
       if (dt > 0.1) dt = 0.016; 
       lastTime = now;
       
-      // Clear screen once per frame
       ctx.clearRect(0, 0, w, h);
-      
-      const subSteps = debugConfig.physicsSteps;
-      const stepDt = dt / subSteps;
 
-      // ==========================================
-      // 1. PHYSICS ENGINE (Runs multiple sub-steps)
-      // ==========================================
-      for (let s = 0; s < subSteps; s++) {
-        globalPhase += stepDt * debugConfig.swingSpeed; 
+      const subDt = dt / debugConfig.physicsSteps;
+
+      // --- 1. HIGH FREQUENCY PHYSICS LOOP ---
+      for (let step = 0; step < debugConfig.physicsSteps; step++) {
+        globalPhase += subDt * debugConfig.swingSpeed; 
 
         gustZones.forEach(g => {
-          g.life += stepDt;
-          g.x += g.dx * stepDt;
-          g.y += g.dy * stepDt;
+          g.life += subDt;
+          g.x += g.dx * subDt;
+          g.y += g.dy * subDt;
           if (g.life >= g.maxLife) Object.assign(g, initGustZone()); 
         });
 
         particles.forEach(p => {
-          p.life += stepDt * 1000;
-
+          p.life += subDt * 1000;
           let targetSpeed = debugConfig.speed;
           
           if (debugConfig.gust > debugConfig.speed) {
@@ -195,43 +190,25 @@ export default function WindParticles({ wx }: { wx: any }) {
             targetSpeed = debugConfig.speed + (debugConfig.gust - debugConfig.speed) * maxGustInfluence;
           }
 
-          p.speed += (targetSpeed - p.speed) * 10 * stepDt;
+          p.speed += (targetSpeed - p.speed) * 10 * subDt;
 
           let targetDir = getVectorFieldTarget(p.x, p.y, globalPhase);
           p.vdx = targetDir.dx * p.speed * debugConfig.speedMultiplier;
           p.vdy = targetDir.dy * p.speed * debugConfig.speedMultiplier;
 
-          p.x += p.vdx * stepDt;
-          p.y += p.vdy * stepDt;
-
-          // Boundary / Life checks
-          if (p.life >= debugConfig.maxLife || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
-            initParticle(p);
-            p.life = 0; 
-          }
+          p.x += p.vdx * subDt;
+          p.y += p.vdy * subDt;
         });
       }
 
-      // ==========================================
-      // 2. RENDER ENGINE (Runs once per frame)
-      // ==========================================
+      // --- 2. RENDER LOOP ---
       ctx.lineCap = 'butt'; 
       ctx.lineJoin = 'round';
       ctx.globalCompositeOperation = 'lighter'; 
 
       particles.forEach(p => {
-        // Throttled history push: Only drop a trail point if enough time has passed
-        if (now - p.lastHistoryTime > debugConfig.historyInterval) {
-          p.history.push({x: p.x, y: p.y, time: now});
-          p.lastHistoryTime = now;
-        }
+        p.color = getWindColor(p.speed); 
 
-        // Clean up old history
-        while(p.history.length > 0 && now - p.history[0].time > debugConfig.trailTime) {
-          p.history.shift();
-        }
-
-        // Fades and Opacity
         let margin = 45; 
         let distToEdgeX = Math.min(p.x, w - p.x);
         let distToEdgeY = Math.min(p.y, h - p.y);
@@ -242,9 +219,17 @@ export default function WindParticles({ wx }: { wx: any }) {
         else if (p.life > debugConfig.maxLife - 400) lifeFade = Math.max(0, (debugConfig.maxLife - p.life) / 400); 
         
         let masterAlpha = Math.min(edgeFade, lifeFade);
-        p.color = getWindColor(p.speed); 
 
-        // Draw Trails
+        // OPTIMIZATION: Only record a path if the particle actually moved a decent distance
+        let lastPt = p.history[p.history.length - 1];
+        if (!lastPt || Math.hypot(p.x - lastPt.x, p.y - lastPt.y) > 2.5) {
+          p.history.push({x: p.x, y: p.y, time: now});
+        }
+
+        while(p.history.length > 0 && now - p.history[0].time > debugConfig.trailTime) {
+          p.history.shift();
+        }
+
         if (masterAlpha > 0.01 && p.history.length > 1) {
           ctx.lineWidth = debugConfig.lineWidth;
           for (let i = 1; i < p.history.length; i++) {
@@ -260,6 +245,11 @@ export default function WindParticles({ wx }: { wx: any }) {
             ctx.lineTo(pt2.x, pt2.y);
             ctx.stroke();
           }
+        }
+
+        if (p.life >= debugConfig.maxLife || p.x < -20 || p.x > w + 20 || p.y < -20 || p.y > h + 20) {
+          initParticle(p);
+          p.life = 0; 
         }
       });
     }
