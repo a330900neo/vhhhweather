@@ -28,14 +28,13 @@ export default function WindParticles({ wx }: { wx: any }) {
       gust: wx.gust,
       varFrom: wx.varFrom,
       varTo: wx.varTo,
+      swingSpeed: 1.6, 
       trailTime: 1250,
       maxLife: 2400,
       lineWidth: 3,
       speedMultiplier: 5,
-      // --- FLUID SIMULATION CONTROLS ---
-      noiseScale: 0.0035,        // How physically large the swirling eddies are (lower = bigger swirls)
-      noiseEvolutionRate: 0.6,   // How fast the turbulence changes over time
-      fluidInertia: 0.85         // High value (closer to 1) means particles STRICTLY lock to the vector field, preventing crossing
+      noiseScale: 0.005
+      // fluidInertia removed! Particles will now perfectly trace the vector field.
     };
     (window as any).windDebug = debugConfig;
 
@@ -61,56 +60,53 @@ export default function WindParticles({ wx }: { wx: any }) {
       return { h, s: 100, l: 50 }; 
     }
 
-    // --- TRUE FLUID MATH (CURL NOISE FOR NON-CROSSING FLOW) ---
-    // Mathematically calculates divergence-free vectors. Particles follow these like physical tracks.
+    // --- TRUE FLUID MATH (CURL NOISE) ---
     function getFluidVelocity(x: number, y: number, phase: number, scale: number) {
-      // Potential function derivatives
-      let dx = -Math.sin(x * scale + phase) * Math.sin(y * scale * 1.3 - phase) 
-             - Math.cos((x - y) * scale * 1.7 + phase);
+      let k1 = scale;
+      let k2 = scale * 1.3;
+      let k3 = scale * 1.7;
+      
+      let dx = Math.sin(x * k1 + phase) * -Math.sin(y * k2 - phase) * k2
+             + Math.cos((x - y) * k3 + phase) * -k3;
              
-      let dy = Math.cos(x * scale + phase) * Math.cos(y * scale * 1.3 - phase) 
-             + Math.cos((x - y) * scale * 1.7 + phase);
+      let dy = -( Math.cos(x * k1 + phase) * k1 * Math.cos(y * k2 - phase)
+                + Math.cos((x - y) * k3 + phase) * k3 );
                 
       let len = Math.sqrt(dx*dx + dy*dy) || 1;
       return { dx: dx/len, dy: dy/len };
     }
 
-    // Smooth scalar noise field to restrict fluid variance to a specific angle sector (e.g., 020V120)
     function getScalarNoise(x: number, y: number, phase: number, scale: number) {
-      let n = Math.sin(x * scale + phase) * Math.cos(y * scale * 1.2 - phase)
-            + Math.sin((x + y) * scale * 0.8 + phase);
-      // Normalize roughly to -1.0 to 1.0
-      return Math.max(-1, Math.min(1, n / 1.5)); 
+      let n = Math.sin(x * scale + phase) * Math.cos(y * scale * 1.3 - phase)
+            + Math.sin((x - y) * scale * 1.7 + phase);
+      return n / 2.0; 
     }
 
     // --- UNIFIED VECTOR FIELD CALCULATION ---
-    function getVectorFieldTarget(x: number, y: number, speed: number, phase: number) {
-      let pxPerSec = speed * debugConfig.speedMultiplier;
-
+    // Now returns ONLY a normalized direction {dx, dy}. 
+    // Speed is applied later to ensure lines never cross!
+    function getVectorFieldTarget(x: number, y: number, phase: number) {
       if (debugConfig.dir === 'VRB') {
-        // Pure unconstrained curl fluid dynamics
         let flow = getFluidVelocity(x, y, phase, debugConfig.noiseScale);
-        return { vdx: flow.dx * pxPerSec, vdy: flow.dy * pxPerSec };
+        return { dx: flow.dx, dy: flow.dy };
 
       } else if (debugConfig.varFrom !== null && debugConfig.varTo !== null) {
-        // Fluid bounded by a sector. We use a continuous spatial noise field so particles 
-        // right next to each other get identical angles, weaving without crossing.
         let diff = debugConfig.varTo - debugConfig.varFrom;
         if (diff < -180) diff += 360; 
         if (diff > 180) diff -= 360;
         let mid = debugConfig.varFrom + diff / 2;
 
-        let spatialFluidPressure = getScalarNoise(x, y, phase, debugConfig.noiseScale);
+        let spatialNoise = getScalarNoise(x, y, phase, debugConfig.noiseScale * 1.5);
+        let combinedPush = Math.max(-1, Math.min(1, spatialNoise * 1.5)); 
         
-        let localAngle = mid + (diff / 2) * spatialFluidPressure;
+        let localAngle = mid + (diff / 2) * combinedPush;
         let rad = (localAngle + 180) * Math.PI / 180;
         
-        return { vdx: Math.sin(rad) * pxPerSec, vdy: -Math.cos(rad) * pxPerSec };
+        return { dx: Math.sin(rad), dy: -Math.cos(rad) };
 
       } else {
-        // Static wind direction
         let rad = (parseFloat(debugConfig.dir as string) + 180) * Math.PI / 180;
-        return { vdx: Math.sin(rad) * pxPerSec, vdy: -Math.cos(rad) * pxPerSec };
+        return { dx: Math.sin(rad), dy: -Math.cos(rad) };
       }
     }
 
@@ -144,9 +140,9 @@ export default function WindParticles({ wx }: { wx: any }) {
       p.history = []; 
 
       // Initialize perfectly locked into the spatial vector field
-      let target = getVectorFieldTarget(p.x, p.y, p.speed, globalPhase);
-      p.vdx = target.vdx;
-      p.vdy = target.vdy;
+      let targetDir = getVectorFieldTarget(p.x, p.y, globalPhase);
+      p.vdx = targetDir.dx * p.speed * debugConfig.speedMultiplier;
+      p.vdy = targetDir.dy * p.speed * debugConfig.speedMultiplier;
 
       return p;
     }
@@ -166,9 +162,7 @@ export default function WindParticles({ wx }: { wx: any }) {
       lastTime = now;
       
       ctx.clearRect(0, 0, w, h);
-      
-      // Advance the noise turbulence over time
-      globalPhase += dt * debugConfig.noiseEvolutionRate; 
+      globalPhase += dt * debugConfig.swingSpeed; 
 
       gustZones.forEach(g => {
         g.life += dt;
@@ -196,7 +190,7 @@ export default function WindParticles({ wx }: { wx: any }) {
         let masterAlpha = Math.min(edgeFade, lifeFade);
         let targetSpeed = debugConfig.speed;
         
-        // Calculate Gust Influcence
+        // Calculate Gust Influence
         if (debugConfig.gust > debugConfig.speed) {
           let maxGustInfluence = 0;
           gustZones.forEach(g => {
@@ -210,18 +204,21 @@ export default function WindParticles({ wx }: { wx: any }) {
           targetSpeed = debugConfig.speed + (debugConfig.gust - debugConfig.speed) * maxGustInfluence;
         }
 
+        // Smoothly adjust the SPEED (but not the direction)
         p.speed += (targetSpeed - p.speed) * 10 * dt;
         p.color = getWindColor(p.speed); 
 
-        // Get the perfect non-crossing vector direction for this exact spatial coordinate
-        let target = getVectorFieldTarget(p.x, p.y, p.speed, globalPhase);
+        // --- FLUID ADVECTION ---
+        // Get the pure, unified directional vector for this exact spatial coordinate
+        let targetDir = getVectorFieldTarget(p.x, p.y, globalPhase);
         
-        // Strictly adhere to the vector field to prevent crossing paths
-        p.vdx += (target.vdx - p.vdx) * debugConfig.fluidInertia;
-        p.vdy += (target.vdy - p.vdy) * debugConfig.fluidInertia;
+        // Instantly align direction, eliminating all crossing!
+        p.vdx = targetDir.dx * p.speed * debugConfig.speedMultiplier;
+        p.vdy = targetDir.dy * p.speed * debugConfig.speedMultiplier;
 
         p.x += p.vdx * dt;
         p.y += p.vdy * dt;
+        
         p.history.push({x: p.x, y: p.y, time: now});
 
         while(p.history.length > 0 && now - p.history[0].time > debugConfig.trailTime) {
