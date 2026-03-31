@@ -30,11 +30,11 @@ export default function WindParticles({ wx }: { wx: any }) {
       varTo: wx.varTo,
       swingSpeed: 1.6, 
       trailTime: 1250,
-      maxLife: 1900,
+      maxLife: 2400,
       lineWidth: 3,
       speedMultiplier: 5,
       noiseScale: 0.005, 
-      fluidInertia: 0.45 // Increased slightly so they lock tightly into parallel rivers without sliding across each other
+      fluidInertia: 0.37 // Increased slightly so they lock tightly into parallel rivers without sliding across each other
     };
     (window as any).windDebug = debugConfig;
 
