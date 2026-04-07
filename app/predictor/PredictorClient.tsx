@@ -2,13 +2,18 @@
 import { useState, useEffect } from 'react';
 import * as tf from '@tensorflow/tfjs';
 
-export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurrentRwy: number, dbRatio24h: number }) {
+// Added dbHistory to the incoming properties
+export default function PredictorClient({ dbCurrentRwy, dbRatio24h, dbHistory }: { 
+    dbCurrentRwy: number, 
+    dbRatio24h: number,
+    dbHistory: { time: string, text: string, rwy: string }[] 
+}) {
     const [model, setModel] = useState<tf.GraphModel | null>(null);
     const [taf, setTaf] = useState('');
     const [decodedBlocks, setDecodedBlocks] = useState<any[]>([]);
     const [results, setResults] = useState<string>('');
+    const [showHistory, setShowHistory] = useState(false); // Toggle for the history box
 
-    // --- 1. LOAD GRAPH MODEL ---
     useEffect(() => {
         async function loadAi() {
             try {
@@ -21,7 +26,6 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
         loadAi();
     }, []);
 
-    // --- 2. TAF PARSER ---
     const parseTAF = (tafText: string) => {
         const blocks = tafText.replace(/=/g, '').split(/(?=BECMG|TEMPO|FM)/);
         let parsed: any[] = [];
@@ -45,13 +49,12 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
         return parsed;
     };
 
-    // --- 3. PREDICTION RUNNER ---
     const runPrediction = async () => {
         if (!model || !taf) return;
         setResults("Calculating Physics...");
 
         const parsedBlocks = parseTAF(taf.toUpperCase());
-        setDecodedBlocks(parsedBlocks); // Save for UI
+        setDecodedBlocks(parsedBlocks); 
 
         let html = "<h3>Timeline Predictions</h3>";
         let now = new Date();
@@ -78,12 +81,10 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
                 
                 if (activeBlock.type === 'TEMPO') {
                     isTempo = true;
-                    // Treat minor TEMPO winds as less severe for ATC inertia
                     if (activeSpd < 15) activeSpd = Math.round(activeSpd * 0.5); 
                 }
             }
 
-            // PHYSICS CALCULATION
             let hw_07 = 0; let xw_07 = 0;
             if (activeDir !== 'VRB') {
                 const rad = (parseInt(activeDir) - 73) * (Math.PI / 180);
@@ -92,7 +93,6 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
             }
             const gustFactor = Math.max(0, activeGust - activeSpd);
 
-            // AI INFERENCE
             const inputTensor = tf.tensor2d([[
                 hw_07, xw_07, gustFactor, futureTime.getMonth() + 1, futureTime.getHours(), 
                 simulatedPrevRwy, dbRatio24h 
@@ -102,13 +102,11 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
             const score = (await prediction.data())[0];
             
             const is25 = score > 0.5;
-            // Only permanently flip inertia if it's NOT a temporary block
             if (!isTempo) simulatedPrevRwy = is25 ? 1 : 0; 
 
             const timeStr = futureTime.getHours().toString().padStart(2, '0') + ":" + futureTime.getMinutes().toString().padStart(2, '0');
             const pct = Math.round((is25 ? score : 1-score)*100);
 
-            // --- TRANSPARENCY UI GENERATION ---
             html += `
             <div style="border-bottom: 1px solid #eee; padding: 10px 0;">
                 <div style="display: flex; justify-content: space-between; font-size: 16px;">
@@ -128,6 +126,27 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
 
     return (
         <div>
+            {/* DATABASE HISTORY TOGGLE */}
+            <button 
+                onClick={() => setShowHistory(!showHistory)}
+                style={{ width: '100%', padding: '10px', background: '#f1f3f5', border: '1px solid #ccc', borderRadius: '5px', marginBottom: '15px', cursor: 'pointer', color: '#333', fontWeight: 'bold' }}
+            >
+                {showHistory ? 'Hide Database History ▵' : 'View Raw Database ATIS History (Last 24h) ▿'}
+            </button>
+
+            {showHistory && (
+                <div style={{ background: '#212529', color: '#00ff00', padding: '15px', borderRadius: '6px', fontSize: '11px', fontFamily: 'monospace', height: '250px', overflowY: 'scroll', marginBottom: '15px' }}>
+                    <p style={{ color: '#fff', marginBottom: '10px' }}>--- RAW ATIS LOG USED FOR INERTIA ---</p>
+                    {dbHistory.length === 0 ? <p>No ATIS found in the last 24 hours.</p> : null}
+                    {dbHistory.map((item, idx) => (
+                        <div key={idx} style={{ marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '4px' }}>
+                            <strong style={{ color: '#ffcc00' }}>[{item.time}] - RWY {item.rwy}</strong><br />
+                            {item.text}
+                        </div>
+                    ))}
+                </div>
+            )}
+
             <textarea 
                 rows={4} 
                 style={{ width: '100%', padding: '10px', fontSize: '16px', borderRadius: '6px', border: '1px solid #ccc' }}
@@ -144,10 +163,10 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
                 {model ? 'Decode TAF & Predict' : 'Loading AI Engine...'}
             </button>
 
-            {/* DECODED TAF BOX (TRANSPARENCY) */}
+            {/* DECODED TAF BOX */}
             {decodedBlocks.length > 0 && (
                 <div style={{ marginTop: '20px', background: '#2c3e50', color: '#ecf0f1', padding: '15px', borderRadius: '6px', fontSize: '13px', fontFamily: 'monospace' }}>
-                    <h4 style={{ margin: '0 0 10px 0', color: '#3498db' }}>--- TAF DECODER STATUS ---</h4>
+                    <h4 style={{ margin: '0 0 10px 0', color: '#3498db' }}>--- HOW AI DECODED YOUR TAF ---</h4>
                     {decodedBlocks.map((b, idx) => (
                         <div key={idx} style={{ marginBottom: '8px' }}>
                             <strong>[{b.type}]</strong> {b.timeText}<br/>
