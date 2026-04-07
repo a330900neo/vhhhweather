@@ -3,9 +3,13 @@ import PredictorClient from './PredictorClient';
 
 export default async function PredictorPage() {
     
-    // 1. Fetch ATIS data from the last 48 HOURS for the transparency log
+    // 1. Let the Database do the Timezone Math!
+    // We fetch 48 hours, but we ask SQL to flag if a row is strictly within the last 24 hours.
     const { rows } = await sql`
-        SELECT raw_text, created_at 
+        SELECT 
+            raw_text, 
+            created_at,
+            (created_at >= NOW() - INTERVAL '24 hours') as is_last_24h
         FROM aero_data 
         WHERE data_type LIKE '%ATIS%' 
         AND created_at >= NOW() - INTERVAL '48 hours'
@@ -18,10 +22,6 @@ export default async function PredictorPage() {
     
     const historyLog: { time: string, text: string, rwy: string }[] = [];
 
-    // Establish the 24-hour cutoff for the AI's math
-    const now = new Date();
-    const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
     rows.forEach((row) => {
         const text = row.raw_text.toUpperCase();
         const match = text.match(/RWY\s*(07|25)/);
@@ -31,17 +31,15 @@ export default async function PredictorPage() {
             const rwy = rwyStr === '07' ? 0 : 1;
             currentRwy = rwy; 
             
-            const rowDate = new Date(row.created_at);
-
-            // 2. Only count the last 24 hours for the AI's trend formula
-            if (rowDate >= cutoff24h) {
+            // 2. We use the Database's perfectly accurate boolean flag
+            if (row.is_last_24h) {
                 validAtisCount24h++;
                 if (rwy === 0) rwy07Count24h++;
             }
 
-            // 3. But save ALL 48 hours to the History Log for you to read
+            // 3. Save all 48 hours to the History Log
             historyLog.push({
-                time: rowDate.toLocaleString(),
+                time: new Date(row.created_at).toLocaleString(),
                 text: text,
                 rwy: rwyStr
             });
@@ -58,7 +56,10 @@ export default async function PredictorPage() {
                 <h3>🌍 Database Live Status</h3>
                 <p><strong>Current Active Runway:</strong> {currentRwy === 0 ? '07' : '25'}</p>
                 <p><strong>AI 24h Trend:</strong> Runway 07 was active {(ratio24h * 100).toFixed(1)}% of the time.</p>
-                <p style={{ fontSize: '12px', color: '#555' }}>Displaying {historyLog.length} ATIS records from the last 48 hours.</p>
+                <p style={{ fontSize: '12px', color: '#555', marginTop: '8px' }}>
+                    * Used {validAtisCount24h} ATIS records for 24h AI math.<br/>
+                    * Displaying {historyLog.length} ATIS records for 48h visual history.
+                </p>
             </div>
 
             <PredictorClient 
