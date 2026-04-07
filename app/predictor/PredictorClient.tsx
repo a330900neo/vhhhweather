@@ -3,25 +3,16 @@ import { useState, useEffect } from 'react';
 import * as tf from '@tensorflow/tfjs';
 
 export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurrentRwy: number, dbRatio24h: number }) {
-    const [model, setModel] = useState<tf.LayersModel | null>(null);
+    // 1. UPDATED: We now use tf.GraphModel instead of tf.LayersModel
+    const [model, setModel] = useState<tf.GraphModel | null>(null);
     const [taf, setTaf] = useState('');
     const [results, setResults] = useState<string>('');
 
     useEffect(() => {
         async function loadAi() {
             try {
-                // Fetch the model from your Next.js public folder
-                const response = await fetch('/model.json');
-                const modelJson = await response.json();
-                
-                // Auto-Patch for Keras 3 compatibility
-                const layers = modelJson.modelTopology.model_config.config.layers;
-                if (layers?.[0]?.config?.batch_shape) {
-                    layers[0].config.batch_input_shape = layers[0].config.batch_shape;
-                    delete layers[0].config.batch_shape;
-                }
-                
-                const loadedModel = await tf.loadLayersModel(tf.io.fromMemory(modelJson));
+                // 2. UPDATED: The Keras patch is deleted! We just use loadGraphModel directly.
+                const loadedModel = await tf.loadGraphModel('/model.json');
                 setModel(loadedModel);
             } catch (e) {
                 console.error("Failed to load model", e);
@@ -34,7 +25,6 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
         if (!model) return;
         setResults("Calculating...");
 
-        // Smart TAF Parser logic (simplified base wind for example)
         let baseDir = 'VRB'; let baseSpd = 0; let baseGust = 0;
         const windMatch = taf.toUpperCase().match(/(VRB|\d{3})(\d{2})(?:G(\d{2}))?KT/);
         
@@ -48,10 +38,9 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
         let now = new Date();
         let simulatedPrevRwy = dbCurrentRwy;
 
-        for (let i = 0; i < 48; i++) { // 24 hours in 30min steps
+        for (let i = 0; i < 48; i++) { 
             let futureTime = new Date(now.getTime() + i * 30 * 60000);
             
-            // Physics
             let hw_07 = 0; let xw_07 = 0;
             if (baseDir !== 'VRB') {
                 const rad = (parseInt(baseDir) - 73) * (Math.PI / 180);
@@ -60,17 +49,16 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h }: { dbCurren
             }
             const gustFactor = Math.max(0, baseGust - baseSpd);
 
-            // Feed 7 Inputs to the Model
             const inputTensor = tf.tensor2d([[
                 hw_07, xw_07, gustFactor, futureTime.getMonth() + 1, futureTime.getHours(), 
-                simulatedPrevRwy, dbRatio24h // NEW: 24h Trend added here!
+                simulatedPrevRwy, dbRatio24h 
             ]]);
 
             const prediction = model.predict(inputTensor) as tf.Tensor;
             const score = (await prediction.data())[0];
             
             const is25 = score > 0.5;
-            simulatedPrevRwy = is25 ? 1 : 0; // Update inertia
+            simulatedPrevRwy = is25 ? 1 : 0; 
 
             const timeStr = futureTime.getHours().toString().padStart(2, '0') + ":" + futureTime.getMinutes().toString().padStart(2, '0');
             html += `<div style="border-bottom: 1px solid #ddd; padding: 5px 0;">
