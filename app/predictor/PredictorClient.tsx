@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import * as tf from '@tensorflow/tfjs';
 
-// Added dbHistory to the incoming properties
 export default function PredictorClient({ dbCurrentRwy, dbRatio24h, dbHistory }: { 
     dbCurrentRwy: number, 
     dbRatio24h: number,
@@ -12,7 +11,7 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h, dbHistory }:
     const [taf, setTaf] = useState('');
     const [decodedBlocks, setDecodedBlocks] = useState<any[]>([]);
     const [results, setResults] = useState<string>('');
-    const [showHistory, setShowHistory] = useState(false); // Toggle for the history box
+    const [showHistory, setShowHistory] = useState(false); 
 
     useEffect(() => {
         async function loadAi() {
@@ -126,18 +125,18 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h, dbHistory }:
 
     return (
         <div>
-            {/* DATABASE HISTORY TOGGLE */}
+            {/* UPDATED: 48 HOUR TEXT */}
             <button 
                 onClick={() => setShowHistory(!showHistory)}
                 style={{ width: '100%', padding: '10px', background: '#f1f3f5', border: '1px solid #ccc', borderRadius: '5px', marginBottom: '15px', cursor: 'pointer', color: '#333', fontWeight: 'bold' }}
             >
-                {showHistory ? 'Hide Database History ▵' : 'View Raw Database ATIS History (Last 24h) ▿'}
+                {showHistory ? 'Hide Database History ▵' : 'View Raw Database ATIS History (Last 48h) ▿'}
             </button>
 
             {showHistory && (
-                <div style={{ background: '#212529', color: '#00ff00', padding: '15px', borderRadius: '6px', fontSize: '11px', fontFamily: 'monospace', height: '250px', overflowY: 'scroll', marginBottom: '15px' }}>
-                    <p style={{ color: '#fff', marginBottom: '10px' }}>--- RAW ATIS LOG USED FOR INERTIA ---</p>
-                    {dbHistory.length === 0 ? <p>No ATIS found in the last 24 hours.</p> : null}
+                <div style={{ background: '#212529', color: '#00ff00', padding: '15px', borderRadius: '6px', fontSize: '11px', fontFamily: 'monospace', height: '300px', overflowY: 'scroll', marginBottom: '15px' }}>
+                    <p style={{ color: '#fff', marginBottom: '10px' }}>--- RAW ATIS LOG (LAST 48 HOURS) ---</p>
+                    {dbHistory.length === 0 ? <p>No ATIS found in the last 48 hours.</p> : null}
                     {dbHistory.map((item, idx) => (
                         <div key={idx} style={{ marginBottom: '8px', borderBottom: '1px solid #444', paddingBottom: '4px' }}>
                             <strong style={{ color: '#ffcc00' }}>[{item.time}] - RWY {item.rwy}</strong><br />
@@ -163,7 +162,6 @@ export default function PredictorClient({ dbCurrentRwy, dbRatio24h, dbHistory }:
                 {model ? 'Decode TAF & Predict' : 'Loading AI Engine...'}
             </button>
 
-            {/* DECODED TAF BOX */}
             {decodedBlocks.length > 0 && (
                 <div style={{ marginTop: '20px', background: '#2c3e50', color: '#ecf0f1', padding: '15px', borderRadius: '6px', fontSize: '13px', fontFamily: 'monospace' }}>
                     <h4 style={{ margin: '0 0 10px 0', color: '#3498db' }}>--- HOW AI DECODED YOUR TAF ---</h4>
