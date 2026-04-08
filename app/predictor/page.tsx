@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic';
 import { sql } from '@vercel/postgres';
 import PredictorClient from './PredictorClient';
 
