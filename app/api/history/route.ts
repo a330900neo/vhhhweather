@@ -6,7 +6,7 @@ export const revalidate = 0;
 
 export async function GET() {
   const res = await query('SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 600');
-  const rows = res.rows;
+  const rows: any[] = res.rows;
 
   // 1. Fetch LIVE structured JSON for the FUTURE predictions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,9 +35,9 @@ export async function GET() {
   const timeline: any[] = [];
 
   // 2. Map PAST Actuals (Every single DB log gets its own point on the chart)
-  const validPastRows = rows.filter(r => new Date(r.created_at) >= past24h);
+  const validPastRows = rows.filter((r: any) => new Date(r.created_at) >= past24h);
   
-  validPastRows.forEach(r => {
+  validPastRows.forEach((r: any) => {
     const rDate = new Date(r.created_at);
     const timeLabel = rDate.toLocaleTimeString('en-HK', { 
       hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Hong_Kong' 
@@ -101,8 +101,8 @@ export async function GET() {
 
   // 4. Extract all historical TAFs from DB to back-fill forecast lines
   const allTafs = rows
-    .filter(r => r.data_type === 'TAF')
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    .filter((r: any) => r.data_type === 'TAF')
+    .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   const latestTafRow = allTafs[0];
   let futureBaseSpd = 0, futureBaseDir: number | null = 0, futureBaseGust: number | null = null, futureBaseTemp: number | null = null;
@@ -124,10 +124,10 @@ export async function GET() {
   }
 
   // 5. Apply TAF data to EVERY point in the timeline
-  timeline.forEach((point) => {
+  timeline.forEach((point: any) => {
     if (!point.isFuture) {
       // Find the most recent TAF issued *before* or *during* this specific timestamp
-      const historicalTaf = allTafs.find(t => new Date(t.created_at).getTime() <= point.timestamp);
+      const historicalTaf = allTafs.find((t: any) => new Date(t.created_at).getTime() <= point.timestamp);
       
       if (historicalTaf) {
         const cleanTaf = historicalTaf.raw_text.replace(/\[MAX:.*?\]\s*/, '');
