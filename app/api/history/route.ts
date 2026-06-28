@@ -1,19 +1,20 @@
-import { sql } from '@vercel/postgres';
+import { query } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 export async function GET() {
-  const { rows } = await sql`SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 600`;
-  
+  const res = await query('SELECT * FROM aero_data ORDER BY created_at DESC LIMIT 600');
+  const rows = res.rows;
+
   // 1. Fetch LIVE structured JSON for the FUTURE predictions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let liveTafFcsts: any[] = [];
   try {
-    const tafRes = await fetch('https://aviationweather.gov/api/data/taf?ids=VHHH&format=json', { 
+    const tafRes = await fetch('https://aviationweather.gov/api/data/taf?ids=VHHH&format=json', {
       cache: 'no-store',
-      headers: { 
+      headers: {
         'Accept': 'application/json',
         'Cache-Control': 'no-cache',
         'User-Agent': 'Mozilla/5.0'
