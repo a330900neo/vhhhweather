@@ -1,4 +1,4 @@
-import { sql } from '@vercel/postgres';
+import { query } from '@/lib/db';
 import Link from 'next/link';
 import WindParticles from './WindParticles'; // <-- IMPORT THE NEW COMPONENT HERE
 import { Metadata } from 'next'; // <-- 1. Import Metadata
